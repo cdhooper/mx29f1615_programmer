@@ -1,0 +1,47 @@
+$0.1643 C20917 is AO3400A N-chan MOSFET 30V 5.7A
+    ? $0.0339 C79015B BSS123 N-chan MOSFET 100V 170mA (not enough A?)
+    ? $0.0210 C193019 BSS138 N-chan MOSFET 50V 220mA (not enough A?)
+    ? $0.0232 C8545   2N7002 N-chan MOSFET 60V 115mA (not enough A?)
+    No resolution -- couldn't find a basic part which is cheaper
+
+$0.0634 C45783 is CL21A226MAQNNNE Samsung 22uF 0805 basic SMD cap
+    NO $0.0094 C1729 Samsung 22nF 0805 50V basic SMD cap (min 50, large stock)
+    No resolution -- this is the only 22uF basic part
+
+BSS84 footprint is wrong, requiring JLCPCB to manually fix the part placement
+    It appears JLCPCB has corrected the footprint for these parts.
+    For future spins, must swap all BSS84 parts for new C8492 parts or
+    update the footprints.
+
+PA10 has VBUS pull-up, but it should be PA9
+    Fixed in Rev5
+
+Pad for PA15_TDI is too close to STM32 package
+    Removed in Rev5
+
+Remove Pad for PA15_TDI
+    Removed in Rev5
+
+USB-C cutout area too large -- could make the pads a little larger
+    Fixed in Rev5
+
+BOOT1 is pulled high instead of being pulled low
+    Fixed in Rev5
+
+PD5 does not need pull up/down
+    Fixed in Rev5
+
+PD6 should only be pulled low at startup
+    Fixed in Rev5
+
+Move INIT LED higher so it's not obscured by ZIF socket
+    Fixed in Rev5
+
+Add VCC active LED
+    Fixed in Rev5
+
+Add labeling to all bottom-side pins of the ZIF socket, SWD, console
+    Fixed in Rev5
+
+Board needs to be slightly less wide
+    Fixed in Rev5

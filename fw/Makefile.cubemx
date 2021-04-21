@@ -1,0 +1,19 @@
+# MX29F1615 Programmer Rev 1 is STM32F407-Discovery
+# MX29F1615 Programmer Rev 2 is STM32F103
+# MX29F1615 Programmer Rev 3+ is STM32F107
+
+BOARD_REV ?= 3
+
+ifeq ($(BOARD_REV), 1)
+$(info Building for STM32F407)
+DIR=fwf407
+else ifeq ($(BOARD_REV), 2)
+$(info Building for STM32F103)
+DIR=fwf103
+else
+$(info Building for STM32F107)
+DIR=fwf107
+endif
+
+%:
+	$(MAKE) -C $(DIR) $(MAKECMDGOALS)

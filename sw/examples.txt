@@ -1,0 +1,39 @@
+ERASE
+-----
+Erase entire EEPROM
+    mxprog -e
+
+Erase third 512K block
+    mxprog -e -y -a 0x100000 -l 0x080000
+Erase fourth 512K block
+    mxprog -e -y -a 0x180000 -l 0x080000
+
+---------------------------------------------------------------------
+
+PROGRAM
+-------
+Program AmigaOS 2.0 in 3rd and 4th 512K block
+    mxprog -a 0x100000 -w 2.04/a2000_kickstart_rom_v2.04.bin
+    mxprog -a 0x180000 -w 2.04/a2000_kickstart_rom_v2.04.bin
+
+Write the same 512K image to all four banks
+    mxprog -f -w 3.1/a2000_kickstart_rom_v3.1.bin
+
+---------------------------------------------------------------------
+
+VERIFY
+------
+
+Verify AmigaOS 2.0 was written to 3rd and 4th 512K blocks
+    mxprog -a 0x100000 -v 2.04/a2000_kickstart_rom_v2.04.bin
+
+---------------------------------------------------------------------
+
+READ
+----
+
+Read contents of entire EEPROM to a file
+    mxprog -r romfile
+
+Read 2nd 512K block from EEPROM to file
+    mxprog -r romfile -a 0x080000 -l 0x080000
