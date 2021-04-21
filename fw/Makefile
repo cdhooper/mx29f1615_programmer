@@ -12,8 +12,9 @@ SRCS   := main.c clock.c gpio.c printf.c timer.c uart.c usb.c version.c \
 OBJDIR := objs
 OBJS   := $(SRCS:%.c=$(OBJDIR)/%.o)
 
-# libopencm3 is a module in the current directory
+# libopencm3 is a git submodule in the current directory
 OPENCM3_DIR := libopencm3
+OPENCM3_HEADER := $(OPENCM3_DIR)/include/libopencm3/stm32/rcc.h
 
 # Our output name
 BINARY = $(OBJDIR)/fw
@@ -163,20 +164,20 @@ $(OBJDIR)/%.size: $(OBJDIR)/%.elf
 '
 $(OBJDIR)/version.o: $(filter-out $(OBJDIR)/version.o, $(OBJS))
 
-$(OBJS): Makefile | $(OBJDIR) $(OPENCM3_DIR)
+$(OBJS): Makefile | $(OBJDIR) $(OPENCM3_DIR) $(OPENCM3_HEADER)
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OPENCM3_DIR):
+$(OPENCM3_DIR) $(OPENCM3_HEADER):
 	@echo Cloning $@
 	git submodule update
 	make -C $(OPENCM3_DIR) -j8
-	@exit 1
 
 $(OPENCM3_LIB): | $(OPENCM3_DIR)
-	@echo Building $@
-	make -C $(OPENCM3_DIR)
+
+#	@echo Building $@
+#	make -C $(OPENCM3_DIR) -j8
 
 %.flashbmp: %.elf
 	$(GDB) --batch \
