@@ -7,6 +7,7 @@ $0.1643 C20917 is AO3400A N-chan MOSFET 30V 5.7A
 $0.0634 C45783 is CL21A226MAQNNNE Samsung 22uF 0805 basic SMD cap
     NO $0.0094 C1729 Samsung 22nF 0805 50V basic SMD cap (min 50, large stock)
     No resolution -- this is the only 22uF basic part
+    Everything is OKAY. C17958 1206 is a basic part now.
 
 BSS84 footprint is wrong, requiring JLCPCB to manually fix the part placement
     It appears JLCPCB has corrected the footprint for these parts.
@@ -45,3 +46,11 @@ Add labeling to all bottom-side pins of the ZIF socket, SWD, console
 
 Board needs to be slightly less wide
     Fixed in Rev5
+
+AO3400A is not supported by JLCPCB SMT service
+    SOT23-3 AO3400A_C344010 is not a basic part, but is available for assembly
+
+Extended parts from last order:
+    C27442  L1 inductor
+    C84817  MT3608
+    C7519   USBLC6-2S
