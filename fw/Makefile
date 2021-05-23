@@ -78,6 +78,7 @@ TGT_CFLAGS	+= $(ARCH_FLAGS)
 TGT_CFLAGS	+= -Wextra -Wshadow -Wimplicit-function-declaration
 TGT_CFLAGS	+= -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes
 TGT_CFLAGS	+= -fno-common -ffunction-sections -fdata-sections
+TGT_CFLAGS	+= -ffreestanding
 TGT_CFLAGS	+= -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
 
 # C++ flags
@@ -89,12 +90,12 @@ TGT_CXXFLAGS	+= -std=c++11
 
 # C & C++ preprocessor common flags
 TGT_CPPFLAGS	+= -MD
-TGT_CPPFLAGS	+= -Wall -Wundef
+TGT_CPPFLAGS	+= -Wall -Wundef -pedantic
 TGT_CPPFLAGS	+= $(DEFS)
 TGT_CPPFLAGS	+= -Wno-unused-parameter
 
 # Linker flags
-TGT_LDFLAGS		+= --static -nostartfiles
+TGT_LDFLAGS		+= --static -nostartfiles -nostdlib
 TGT_LDFLAGS		+= -T$(LDSCRIPT)
 TGT_LDFLAGS		+= $(ARCH_FLAGS) $(DEBUG)
 TGT_LDFLAGS		+= -Wl,-Map=$(OBJDIR)/$*.map -Wl,--cref
@@ -110,7 +111,6 @@ LDLIBS		+= -l$(LIBNAME)
 LDLIBS		+= -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group
 
 .SUFFIXES: .elf .bin .hex .srec .list .map .images
-.SECONDEXPANSION:
 .SECONDARY:
 
 all: bin size

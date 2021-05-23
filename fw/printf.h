@@ -12,6 +12,8 @@
 #ifndef _PRINTF_H
 #define _PRINTF_H
 
+#include <stdint.h>
+#include <stddef.h>
 #include <stdarg.h>
 
 #ifdef __cplusplus
@@ -33,7 +35,9 @@ extern "C" {
 #define vprintf   _stdio_vprintf
 #define vsnprintf _stdio_vsnprintf
 
+#if 0
 #include <stdio.h>
+#endif
 #undef FILE
 #undef fprintf
 #undef fputs
@@ -150,7 +154,19 @@ int vprintf(const char *fmt, va_list ap);
 __attribute__((format(__printf__, 1, 2)))
 int printf(const char *fmt, ...);
 
-#define DF_USB 1
+/*
+ * scanf() uses a format string to derive specified values from input buffer>
+ *
+ * @param [in]  str - A file pointer which is used to describe the input
+ *                    buffer.
+ * @param [in]  fmt - The scanf() format string to process.
+ * @param [out] ... - A variable list of arguments.
+ *
+ * @return      The number of format items successfully matched and assigned.
+ */
+__attribute__((format(__scanf__, 1, 3)))
+int sscanf(const char *str, char const *fmt, ...);
+
 
 /**
  * errx() is a stdio compatible function which operates on a format

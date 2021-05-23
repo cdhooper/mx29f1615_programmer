@@ -20,8 +20,6 @@
 
 #define ARRAY_SIZE(x) (int)((sizeof (x) / sizeof ((x)[0])))
 
-typedef unsigned int uint;
-
 #ifdef AMIGA
 typedef int _Bool;
 #endif

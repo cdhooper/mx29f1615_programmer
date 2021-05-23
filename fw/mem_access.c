@@ -13,6 +13,7 @@
 #include "printf.h"
 #endif
 #include "cmdline.h"
+#include "main.h"
 #include "mem_access.h"
 
 #if defined(AMIGA)

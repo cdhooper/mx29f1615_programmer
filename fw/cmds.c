@@ -11,6 +11,7 @@
 
 #include "cmdline.h"
 #ifdef EMBEDDED_CMD
+#include "main.h"
 #include "pcmds.h"
 #include "prom_access.h"
 #include <stdbool.h>

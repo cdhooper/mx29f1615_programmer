@@ -9,11 +9,11 @@
  * Analog to digital conversion for sensors.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include "cmdline.h"
+#include "printf.h"
 #include "main.h"
 #include "prom_access.h"
 #include "adc.h"

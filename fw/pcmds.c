@@ -10,10 +10,10 @@
  */
 
 #include "printf.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include "main.h"
 #include "cmdline.h"
 #include "prom_access.h"
 #include <stdbool.h>
@@ -22,7 +22,6 @@
 #include "cmds.h"
 #include "pcmds.h"
 #include "adc.h"
-#include "main.h"
 #include "utils.h"
 #include "usb.h"
 #include "irq.h"
