@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-O2 -g -lpthread -Wall -Wpedantic
+CFLAGS=-O2 -g -pthread -lpthread -Wall -Wpedantic
 PROG=mxprog
 
 ifeq ($(OS),Windows_NT)

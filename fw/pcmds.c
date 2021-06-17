@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include "board.h"
 #include "main.h"
 #include "cmdline.h"
 #include "prom_access.h"
@@ -72,8 +73,12 @@ const char cmd_prom_help[] =
 const char cmd_reset_help[] =
 "reset      - reset CPU\n"
 "reset dfu  - reset into DFU programming mode\n"
-"reset usb  - reset and restart USB interface\n"
-"reset usbd - reset and shut down USB interface\n";
+"reset usb  - reset and restart USB interface\n";
+
+const char cmd_usb_help[] =
+"usb disable - reset and disable USB\n"
+"usb regs    - display USB device registers\n"
+"usb reset   - reset and restart USB device\n";
 
 typedef struct {
     const char *const name;
@@ -458,11 +463,6 @@ cmd_reset(int argc, char * const *argv)
         usb_signal_reset_to_host(1);
         usb_startup();
         return (RC_SUCCESS);
-    } else if (strcmp(argv[1], "usbd") == 0) {
-        timer_delay_msec(1);
-        usb_shutdown();
-        usb_signal_reset_to_host(0);
-        return (RC_SUCCESS);
     } else {
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);
@@ -476,6 +476,31 @@ cmd_cpu(int argc, char * const *argv)
         return (RC_USER_HELP);
     if (strncmp(argv[1], "regs", 1) == 0) {
         fault_show_regs(NULL);
+    } else {
+        printf("Unknown argument %s\n", argv[1]);
+        return (RC_USER_HELP);
+    }
+    return (RC_SUCCESS);
+}
+
+rc_t
+cmd_usb(int argc, char * const *argv)
+{
+    if (argc < 2)
+        return (RC_USER_HELP);
+    if (strncmp(argv[1], "disable", 1) == 0) {
+        timer_delay_msec(1);
+        usb_shutdown();
+        usb_signal_reset_to_host(0);
+        return (RC_SUCCESS);
+    } else if (strncmp(argv[1], "regs", 3) == 0) {
+        usb_show_regs();
+    } else if (strcmp(argv[1], "reset") == 0) {
+        timer_delay_msec(1);
+        usb_shutdown();
+        usb_signal_reset_to_host(1);
+        usb_startup();
+        return (RC_SUCCESS);
     } else {
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);

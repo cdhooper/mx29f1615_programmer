@@ -14,8 +14,17 @@ BSS84 footprint is wrong, requiring JLCPCB to manually fix the part placement
     For future spins, must swap all BSS84 parts for new C8492 parts or
     update the footprints.
 
+AO3400A is not supported by JLCPCB SMT service
+    SOT23-3 AO3400A_C344010 is not a basic part, but is available for assembly
+
+Extended parts from last order:
+    C27442  L1 inductor
+    C84817  MT3608
+    C7519   USBLC6-2S
+
 PA10 has VBUS pull-up, but it should be PA9
     Fixed in Rev5
+    Bug: Not fixed in Rev5
 
 Pad for PA15_TDI is too close to STM32 package
     Removed in Rev5
@@ -28,6 +37,7 @@ USB-C cutout area too large -- could make the pads a little larger
 
 BOOT1 is pulled high instead of being pulled low
     Fixed in Rev5
+    Bug: Not fixed in Rev5
 
 PD5 does not need pull up/down
     Fixed in Rev5
@@ -46,11 +56,3 @@ Add labeling to all bottom-side pins of the ZIF socket, SWD, console
 
 Board needs to be slightly less wide
     Fixed in Rev5
-
-AO3400A is not supported by JLCPCB SMT service
-    SOT23-3 AO3400A_C344010 is not a basic part, but is available for assembly
-
-Extended parts from last order:
-    C27442  L1 inductor
-    C84817  MT3608
-    C7519   USBLC6-2S

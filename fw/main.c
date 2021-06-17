@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
+#include "board.h"
 #include "main.h"
 #include "clock.h"
 #include "uart.h"
@@ -34,7 +35,7 @@
 /* libopencm3 */
 #endif
 
-#ifdef STM32F1
+#if BOARD_REV >= 2
 #define BUTTON_PRESSED_STATE 1
 #else
 #define BUTTON_PRESSED_STATE 0

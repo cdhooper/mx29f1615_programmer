@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include "board.h"
 #include "cmdline.h"
 #include "printf.h"
 #include "main.h"
@@ -29,7 +30,7 @@
 
 #elif defined (STM32F1)
 /* Verified STM32F103xE and STM32F107xC are identical */
-#define TEMP_V25           1430      // 1.34V
+#define TEMP_V25           1410      // 1.34V-1.52V; 1.41V seems more accurate
 #define TEMP_AVGSLOPE      43        // 4.3
 #define SCALE_VREF         12000000  // 1.20V
 #define V10_DIVIDER_SCALE  1 / 909  // Rev 2+ divider: (10k/1k  0.909V=10V)
@@ -436,7 +437,7 @@ adc_show_sensors(void)
     uint calc_v5cl;
     uint calc_v5cl_ma;
     uint calc_v10fb;
-    calc_temp = ((int)(adc[1] * scale - TEMP_V25 * 10000)) / TEMP_AVGSLOPE +
+    calc_temp = ((int)(TEMP_V25 * 10000 - adc[1] * scale)) / TEMP_AVGSLOPE +
                 TEMP_BASE;
     calc_v10   = adc[2] * scale * V10_DIVIDER_SCALE;
     calc_v3p3  = adc[3] * scale * V3P3_DIVIDER_SCALE;

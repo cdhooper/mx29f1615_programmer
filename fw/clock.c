@@ -12,6 +12,7 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/flash.h>
+#include "board.h"
 #include "clock.h"
 
 uint32_t rcc_pclk2_frequency = 0;

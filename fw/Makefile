@@ -2,8 +2,7 @@
 # MX29F1615 Programmer Rev 2 is STM32F103
 # MX29F1615 Programmer Rev 3+ is STM32F107
 
-BOARD_REV ?= 3
-
+BOARD_REV ?= 5
 
 SRCS   := main.c clock.c gpio.c printf.c timer.c uart.c usb.c version.c \
 	  led.c irq.c mem_access.c readline.c cmdline.c cmds.c pcmds.c \
@@ -39,7 +38,7 @@ LIBNAME		:= opencm3_stm32f1
 ARCH_FLAGS	:= -mthumb -mcpu=cortex-m3 -msoft-float
 DEFS		+= -DSTM32F1 -DSTM32F107xC  # Rev 3+
 endif
-DEFS		+= -DEMBEDDED_CMD
+DEFS		+= -DEMBEDDED_CMD -DBOARD_REV=$(BOARD_REV)
 
 OPENCM3_LIB := $(OPENCM3_DIR)/lib/lib$(LIBNAME).a
 
@@ -171,7 +170,7 @@ $(OBJDIR):
 
 $(OPENCM3_DIR) $(OPENCM3_HEADER):
 	@echo Cloning $@
-	git submodule update
+	git submodule update --init
 	make -C $(OPENCM3_DIR) -j8
 
 $(OPENCM3_LIB): | $(OPENCM3_DIR)
@@ -191,23 +190,30 @@ clean:
 # Dependencies
 -include $(OBJS:.o=.d)
 
+UDEV_DIR        := /etc/udev/rules.d
+UDEV_FILENAMES  := 70-st-link.rules 70-ttymxprog.rules
+UDEV_FILE_PATHS := $(UDEV_FILENAMES:%=$(UDEV_DIR)/%)
+$(UDEV_FILE_PATHS) &:
+	sudo cp -np udev/* $(UDEV_DIR)
+	sudo udevadm control --reload
+
 # Write STM32 flash using DFU mode
-just-dfu:
+just-dfu: $(UDEV_FILE_PATHS)
 	$(DFU_UTIL) --device 0483:df11 --alt 0 --download $(BINARY).bin --dfuse-address 0x08000000:leave
 
 # Write STM32 flash using ST-Link
-just-flash: $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin
+just-flash: $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin $(UDEV_FILE_PATHS)
 	$(ST_TOOLS_PATH)/st-flash --reset write $(BINARY).bin 0x08000000
 
 # Erase STM32 flash using ST-Link
-just-erase: $(ST_TOOLS_PATH)/st-flash
+just-erase: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
 	$(ST_TOOLS_PATH)/st-flash --debug --flash=0x100000 erase
 
 dfu: all just-dfu
 flash: all just-flash
 
 # Connect to remote STM32 via ST-Link (follow with "make gdb")
-stlink:
+stlink: | $(UDEV_FILE_PATHS)
 	$(ST_TOOLS_PATH)/st-util
 
 # Get ST-TOOLS
@@ -221,4 +227,4 @@ $(ST_TOOLS_PATH)/st-flash build-stutils: | $(ST_BUILD_DIR)
 gdb:
 	gdb -q -x .gdbinit $(BINARY).elf
 
-.PHONY: images clean get-stutils build_stutils stlink dfu flash just-dfu just-flash clean size elf bin hex srec list
+.PHONY: images clean get-stutils build_stutils stlink dfu flash just-dfu just-flash clean size elf bin hex srec list udev-files

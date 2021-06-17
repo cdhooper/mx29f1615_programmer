@@ -10,8 +10,9 @@
  */
 
 #include <stdint.h>
-#include "main.h"
+#include "board.h"
 #include "button.h"
+#include "main.h"
 #include "gpio.h"
 
 #ifdef STM32F1

@@ -9,6 +9,7 @@
  * STM32 LED control
  */
 
+#include "board.h"
 #include "main.h"
 #include <stdint.h>
 #include "led.h"

@@ -10,6 +10,7 @@
  */
 
 #include "printf.h"
+#include "board.h"
 #include "main.h"
 #include "uart.h"
 #include "utils.h"

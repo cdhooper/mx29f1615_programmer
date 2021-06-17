@@ -25,6 +25,7 @@ void usb_signal_reset_to_host(int restart);
 void usb_poll(void);
 void usb_mask_interrupts(void);
 void usb_unmask_interrupts(void);
+void usb_show_regs(void);
 
 uint8_t CDC_Transmit_FS(uint8_t *buf, uint16_t len);
 

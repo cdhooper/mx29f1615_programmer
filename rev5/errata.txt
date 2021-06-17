@@ -1,0 +1,7 @@
+PA10 has VBUS pull-up, but it should be PA9
+
+BOOT1 is pulled high instead of being pulled low
+
+Reduce depth of USB-C by 0.5mm
+
+Add header for two more GPIOs

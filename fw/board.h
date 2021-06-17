@@ -6,10 +6,16 @@
  *
  * ---------------------------------------------------------------------
  *
- * Program version.
+ * Board prototypes.
  */
 
-#include "version.h"
+#ifndef _BOARD_H
+#define _BOARD_H
 
-const char * const version_str =
-    "Version 1.2 built "BUILD_DATE" "BUILD_TIME;
+#if defined(STM32F1XX)
+#define STM32F1
+#elif defined(STM32F4XX)
+#define STM32F4
+#endif
+
+#endif /* _BOARD_H */

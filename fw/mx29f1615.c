@@ -9,6 +9,7 @@
  * MX29F1615-specific code (read, write, erase, status, etc).
  */
 
+#include "board.h"
 #include "main.h"
 #include "printf.h"
 #include "uart.h"

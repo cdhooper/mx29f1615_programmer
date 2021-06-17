@@ -11,6 +11,7 @@
 
 #include "printf.h"
 #include "uart.h"
+#include "board.h"
 #include "main.h"
 #include "adc.h"
 #include "stdbool.h"

@@ -10,6 +10,7 @@
  */
 
 #include "printf.h"
+#include "board.h"
 #include "main.h"
 #include "uart.h"
 #include <stdbool.h>
@@ -48,7 +49,7 @@ typedef uint32_t USART_TypeDef_P;
 
 #if defined(STM32F1)
 /* STM32F1XX on Rev2+ uses PA9 for CONS_TX and PA10 for CONS_RX */
-/* STM32F1XX on Rev4  uses PB6 for CONS_TX and PB7 for CONS_RX */
+/* STM32F1XX on Rev4+ uses PB6 for CONS_TX and PB7 for CONS_RX */
 #define CONSOLE_USART       USART1
 #define CONSOLE_IRQn        NVIC_USART1_IRQ
 #define CONSOLE_IRQHandler  usart1_isr
@@ -395,7 +396,10 @@ uart_init(void)
     rcc_periph_clock_enable(RCC_AFIO);
     rcc_periph_clock_enable(RCC_USART1);
     rcc_periph_clock_enable(RCC_GPIOB);
+#if BOARD_REV >= 3
+    /* Rev4+ uses PB6 for CONS_TX and PB7 for CONS_RX; Rev3 requires rework. */
     AFIO_MAPR |= AFIO_MAPR_USART1_REMAP;
+#endif
     gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ,
                   GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO6); // CONS_TX
     gpio_set_mode(GPIOB, GPIO_MODE_INPUT,

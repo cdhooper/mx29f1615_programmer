@@ -9,6 +9,7 @@
  * Low level STM32 GPIO access.
  */
 
+#include "board.h"
 #include "main.h"
 #include "printf.h"
 #include "uart.h"

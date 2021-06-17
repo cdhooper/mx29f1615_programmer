@@ -12,12 +12,6 @@
 #ifndef _MAIN_H
 #define _MAIN_H
 
-#if defined(STM32F1XX)
-#define STM32F1
-#elif defined(STM32F4XX)
-#define STM32F4
-#endif
-
 typedef unsigned int uint;
 
 #endif /* _MAIN_H */

@@ -10,6 +10,7 @@
  */
 
 #include "printf.h"
+#include "board.h"
 #include "utils.h"
 #include <stdbool.h>
 #include "usb.h"
@@ -17,6 +18,7 @@
 #include "gpio.h"
 #include "uart.h"
 #include "timer.h"
+#include "cmdline.h"
 
 #undef DEBUG_NO_USB
 
@@ -844,18 +846,10 @@ usb_enable_interrupts(void)
     *USB_CNTR_REG |= USB_CNTR_SOFM | USB_CNTR_SUSPM | USB_CNTR_RESETM |
                      USB_CNTR_ERRM | USB_CNTR_WKUPM | USB_CNTR_CTRM;
 #elif defined (STM32F107xC)
-#if 1
     /* Is this correct? */
     OTG_FS_GOTGINT |= OTG_GOTGINT_DBCDNE | OTG_GOTGINT_ADTOCHG |
                       OTG_GOTGINT_HNGDET | OTG_GOTGINT_HNSSCHG |
                       OTG_GOTGINT_SRSSCHG | OTG_GOTGINT_SEDET;
-#else
-    /* Maybe it should be this */
-    OTG_FS_GINTMSK |= OTG_GINTMSK_USBSUSPM | OTG_GINTMSK_USBRST |
-                      OTG_GINTMSK_ENUMDNEM | OTG_GINTMSK_IEPINT |
-                      OTG_GINTMSK_OEPINT   | OTG_GINTMSK_IISOIXFRM |
-                      OTG_GINTMSK_IISOOXFRM | OTG_GINTMSK_WUIM;
-#endif
 #endif
 
     nvic_set_priority(USB_INTERRUPT, 0x40);
@@ -917,5 +911,159 @@ void usb_startup(void)
     using_usb_interrupt = false;
 #endif
 
+#ifndef STM32F103xE
+    /*
+     * STM32F4 and STM32F105/STM32F107 have register with status indicating
+     * that VBus was detected. This is a clearable status, so this code
+     * relies on the USB interrupt handler not clearing that status.
+     */
+    if ((OTG_FS_GINTSTS & OTG_GINTSTS_SRQINT) == 0) {
+        printf("    VBus not detected\n");
+    }
+#endif
+
 #endif /* !USE_HAL_DRIVER */
+}
+
+typedef struct {
+    uint16_t regs_offset;
+    uint8_t  regs_start_end;
+    uint8_t  regs_stride;
+    char     regs_name[12];
+} usb_regs_t;
+
+#ifdef STM32F103xE
+static const usb_regs_t usb_regs[] = {
+    { 0x000, 0x08,    4, "EP%xR" },
+    { 0x040, 0x01,    0, "CNTR" },
+    { 0x044, 0x01,    0, "ISTR" },
+    { 0x048, 0x01,    0, "FNR" },
+    { 0x04c, 0x01,    0, "DADDR" },
+    { 0x050, 0x01,    4, "BTABLE" },
+};
+#else /* STM32F4 / STM32F107 */
+static const usb_regs_t usb_regs[] = {
+    { 0x000, 0x01,    0, "GOTGCTL" },
+    { 0x004, 0x01,    0, "GOTGINT" },
+    { 0x008, 0x01,    0, "GAHBCFG" },
+    { 0x00c, 0x01,    0, "GUSBCFG" },
+    { 0x010, 0x01,    0, "GRSTCTL" },
+    { 0x014, 0x01,    0, "GINTSTS" },
+    { 0x018, 0x01,    0, "GINTMSK" },
+    { 0x01c, 0x01,    0, "GRXSTSR" },
+    { 0x024, 0x01,    0, "GRXFSIZ" },
+    { 0x028, 0x01,    0, "DIEPTXF0" },
+    { 0x02c, 0x01,    0, "HNPTXSTS" },
+    { 0x038, 0x01,    0, "GCCFG" },
+    { 0x03c, 0x01,    0, "CID" },
+    { 0x100, 0x01,    0, "HPTXFSIZ" },
+    { 0x104, 0x14,    4, "DIEPTXF%x" },
+    { 0x800, 0x01,    0, "DCFG" },
+    { 0x804, 0x01,    0, "DCTL" },
+    { 0x808, 0x01,    0, "DSTS" },
+    { 0x810, 0x01,    0, "DIEPMSK" },
+    { 0x814, 0x01,    0, "DOEPMSK" },
+    { 0x818, 0x01,    0, "DAINT" },
+    { 0x81c, 0x01,    0, "DAINTMSK" },
+    { 0x828, 0x01,    0, "DVBUSDIS" },
+    { 0x82c, 0x01,    0, "DVBUSPULSE" },
+    { 0x834, 0x01,    0, "DIEPEMPMSK" },
+    { 0x900, 0x04, 0x20, "DIEPCTL%x" },
+    { 0x908, 0x04, 0x20, "DIEPINT%x" },
+    { 0x910, 0x04, 0x20, "DIEPTSIZ%x" },
+    { 0x918, 0x04, 0x20, "DTXFSTS%x" },
+    { 0xb00, 0x04, 0x20, "DOEPCTL%x" },
+    { 0xb08, 0x04, 0x20, "DOEPINT%x" },
+    { 0xb10, 0x04, 0x20, "DOEPTSIZ%x" },
+    { 0xe00, 0x01,    0, "PCGCCTL" },
+};
+#endif
+
+void usb_show_regs(void)
+{
+    uint     pos;
+    uint32_t base = USB_PERIPH_BASE;
+
+    for (pos = 0; pos < ARRAY_SIZE(usb_regs); pos++) {
+        uint32_t    addr  = base + usb_regs[pos].regs_offset;
+        uint        start = usb_regs[pos].regs_start_end >> 4;
+        uint        end   = usb_regs[pos].regs_start_end & 0xf;
+        uint        cur;
+
+        for (cur = start; cur < end; cur++) {
+            char namebuf[12];
+            snprintf(namebuf, sizeof (namebuf), usb_regs[pos].regs_name, cur);
+            printf("  %-10s [%08lx] %08lx\n",
+                   namebuf, addr, *ADDR32(addr));
+            addr += usb_regs[pos].regs_stride;
+        }
+    }
+#ifndef STM32F103xE
+    uint32_t val = *ADDR32(base + 0x4); // GOTGINT
+    printf("\n  GOTGINT %08lx", val);
+    if (val & (1 << 19))
+        printf(" DBCDNE");
+    if (val & (1 << 18))
+        printf(" ADTOCHG");
+    if (val & (1 << 17))
+        printf(" HNGDET");
+    if (val & (1 << 8))
+        printf(" SRSSCHG");
+    if (val & (1 << 2))
+        printf(" SEDET");
+
+    val = *ADDR32(base + 0x14); // GINTSTS
+    printf("\n  GINTSTS %08lx", val);
+    if (val & (1 << 31))
+        printf(" WKUPINT");
+    if (val & (1 << 30))
+        printf(" SRQINT");
+    if (val & (1 << 29))
+        printf(" DISCINT");
+    if (val & (1 << 28))
+        printf(" CIDSCHG");
+    if (val & (1 << 26))
+        printf(" PTXFE");
+    if (val & (1 << 25))
+        printf(" HCINT");
+    if (val & (1 << 24))
+        printf(" HPRTINT");
+    if (val & (1 << 21))
+        printf(" IPXFR");
+    if (val & (1 << 20))
+        printf(" IISOIXFR");
+    if (val & (1 << 19))
+        printf(" OEPINT");
+    if (val & (1 << 18))
+        printf(" IEPINT");
+    if (val & (1 << 15))
+        printf(" EOPF");
+    if (val & (1 << 14))
+        printf(" ISOODRP");
+    if (val & (1 << 13))
+        printf(" ENUMDNE");
+    if (val & (1 << 12))
+        printf(" USBRST");
+    if (val & (1 << 11))
+        printf(" USBSUSP");
+    if (val & (1 << 10))
+        printf(" ESUSP");
+    if (val & (1 << 7))
+        printf(" GONAKEFF");
+    if (val & (1 << 6))
+        printf(" GINAKEFF");
+    if (val & (1 << 5))
+        printf(" NPTXFE");
+    if (val & (1 << 4))
+        printf(" RXFLVL");
+    if (val & (1 << 3))
+        printf(" SOF");
+    if (val & (1 << 2))
+        printf(" OTGINT");
+    if (val & (1 << 1))
+        printf(" MMIS");
+    if (val & (1 << 0))
+        printf(" CMOD");
+    printf("\n");
+#endif
 }

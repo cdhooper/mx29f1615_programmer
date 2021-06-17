@@ -47,10 +47,10 @@ static const struct option long_opts[] = {
     { "identify", no_argument,       NULL, 'i' },
     { "help",     no_argument,       NULL, 'h' },
     { "len",      required_argument, NULL, 'l' },
-    { "read",     required_argument, NULL, 'r' },
+    { "read",     no_argument,       NULL, 'r' },
     { "term",     no_argument,       NULL, 't' },
-    { "verify",   required_argument, NULL, 'v' },
-    { "write",    required_argument, NULL, 'w' },
+    { "verify",   no_argument,       NULL, 'v' },
+    { "write",    no_argument,       NULL, 'w' },
     { "yes",      no_argument,       NULL, 'y' },
     { NULL,       no_argument,       NULL,  0  }
 };
@@ -66,10 +66,10 @@ static char short_opts[] = {
     'h',         // --help
     'i',         // --identify
     'l', ':',    // --len <num>
-    'r', ':',    // --read <filename>
+    'r',         // --read <filename>
     't',         // --term
-    'v', ':',    // --verify <filename>
-    'w', ':',    // --write <filename>
+    'v',         // --verify <filename>
+    'w',         // --write <filename>
     'y',         // --yes
     '\0'
 };
@@ -99,6 +99,15 @@ static const char usage_text[] =
 "    mxprog -d /dev/ttyACM0 -i\n"
 #endif
 "";
+
+/* Command line modes which may be specified by the user */
+#define MODE_UNKNOWN 0x00
+#define MODE_ERASE   0x01
+#define MODE_ID      0x02
+#define MODE_READ    0x04
+#define MODE_TERM    0x08
+#define MODE_VERIFY  0x10
+#define MODE_WRITE   0x20
 
 /* XXX: Need to register USB device ID at http://pid.codes */
 #define MX_VENDOR 0x1209
@@ -452,6 +461,9 @@ send_ll_bin(uint8_t *data, size_t len)
 /*
  * config_dev() will configure the serial device used for communicating
  *              with the programmer.
+ *
+ * @param  [in]  fd - Opened file descriptor for serial device.
+ * @return       RC_FAILURE - Failed to configure device.
  */
 static rc_t
 config_dev(int fd)
@@ -541,6 +553,9 @@ config_dev(int fd)
 /*
  * reopen_dev() will wait for the serial device to reappear after it has
  *              disappeared.
+ *
+ * @param  [in]  None.
+ * @return       None.
  */
 static void
 reopen_dev(void)
@@ -1281,7 +1296,7 @@ ask_again:
  *                       sector to be erased.
  * @return       None.
  */
-static void
+static int
 eeprom_erase(uint addr, uint len)
 {
     int  rxcount;
@@ -1305,16 +1320,16 @@ eeprom_erase(uint addr, uint len)
         snprintf(cmd, sizeof (cmd) - 1, "prom erase %x %x", addr, len);
     }
     if (are_you_sure(prompt) == false)
-        return;
+        return (1);
     cmd[sizeof (cmd) - 1] = '\0';
 
     if (send_cmd(cmd))
-        return;  // send_cmd() reported "timeout" in this case
+        return (1);  // send_cmd() reported "timeout" in this case
 
     no_data = 0;
     for (count = 0; count < 1000; count++) {  // 100 seconds max
         if (recv_output(cmd_output, sizeof (cmd_output), &rxcount, 100))
-            return; // "timeout" was reported in this case
+            return (1); // "timeout" was reported in this case
         if (rxcount == 0) {
             if (no_data++ == 20) {
                 printf("Receive timeout\n");
@@ -1330,6 +1345,7 @@ eeprom_erase(uint addr, uint len)
             }
         }
     }
+    return (0);
 }
 
 /*
@@ -1864,6 +1880,9 @@ find_mx_programmer(void)
 /*
  * wait_for_tx_writer() waits for the TX Writer thread to flush its transmit
  *                      buffer.
+ *
+ * @param  [in]  None.
+ * @return       None.
  */
 static void
 wait_for_tx_writer(void)
@@ -1875,6 +1894,94 @@ wait_for_tx_writer(void)
             break;
         else
             time_delay_msec(10);
+}
+
+/*
+ * run_mode() handles command line options provided by the user.
+ *
+ * @param [in] mode       - Bitmask of specified modes (some may be combined).
+ * @param [in] baseaddr   - Base address, if specified.
+ * @param [in] len        - Length, if specified.
+ * @param [in] report_max - Maximum miscompares to show in verbose manner.
+ * @param [in] fill       - Fill the remaining EEPROM with duplicate images.
+ * @param [in] filename   - Source or destination filename.
+ *
+ * @return       0 - Success.
+ * @return       1 - Failure.
+ */
+int
+run_mode(uint mode, uint baseaddr, uint len, uint report_max, bool fill,
+         const char *filename)
+{
+    if (mode == MODE_UNKNOWN) {
+        warnx("You must specify one of: -e -i -r -t or -w");
+        usage(stderr);
+        return (1);
+    }
+    if (mode & MODE_TERM) {
+        run_terminal_mode();
+        return (0);
+    }
+    if (mode & MODE_ID) {
+        eeprom_id();
+        return (0);
+    }
+    if ((filename == NULL) && (mode & (MODE_READ | MODE_VERIFY | MODE_WRITE))) {
+        warnx("You must specify a filename with -r or -v or -w option\n");
+        return (1);
+    }
+
+    if (mode & MODE_READ) {
+        if ((filename == NULL) || (filename[0] == '\0')) {
+            warnx("You must specify a filename where eeprom contents "
+                  "will be written");
+            usage(stderr);
+            return (1);
+        }
+        if (baseaddr == ADDR_NOT_SPECIFIED)
+            baseaddr = 0x000000;  // Start of EEPROM
+
+        eeprom_read(filename, baseaddr, len);
+        return (0);
+    }
+    if (mode & MODE_ERASE) {
+        if (eeprom_erase(baseaddr, len))
+            return (1);
+    }
+    if (mode & MODE_WRITE) {
+        if ((filename == NULL) || (filename[0] == '\0')) {
+            warnx("You must specify a filename to write to eeprom");
+            usage(stderr);
+            return (1);
+        }
+    }
+    if (mode & MODE_VERIFY) {
+        if ((filename == NULL) || (filename[0] == '\0')) {
+            warnx("You must specify a filename to verify against eeprom");
+            usage(stderr);
+            return (1);
+        }
+    }
+
+    if (mode & (MODE_WRITE | MODE_VERIFY)) {
+        if (baseaddr == ADDR_NOT_SPECIFIED)
+            baseaddr = 0x000000;  // Start of EEPROM
+
+        do {
+            if ((mode & MODE_WRITE) &&
+                (eeprom_write(filename, baseaddr, &len) != 0))
+                return (1);
+
+            if ((mode & MODE_VERIFY) &&
+                (eeprom_verify(filename, baseaddr, &len, report_max) != 0))
+                return (1);
+
+            baseaddr += len;
+            if (baseaddr + len > EEPROM_SIZE_DEFAULT)
+                break;
+        } while (fill);
+    }
+    return (0);
 }
 
 /*
@@ -1891,6 +1998,7 @@ int
 main(int argc, char * const *argv)
 {
     int              pos;
+    int              rc;
     int              ch;
     int              long_index = 0;
     bool             fill       = FALSE;
@@ -1898,17 +2006,8 @@ main(int argc, char * const *argv)
     uint             len        = EEPROM_SIZE_NOT_SPECIFIED;
     uint             report_max = 64;
     char            *filename   = NULL;
+    uint             mode       = MODE_UNKNOWN;
     struct sigaction sa;
-    enum {
-        MODE_UNKNOWN,
-        MODE_ERASE,
-        MODE_ID,
-        MODE_READ,
-        MODE_TERM,
-        MODE_VERIFY,
-        MODE_WRITE,
-    } mode = MODE_UNKNOWN;
-
 
     memset(&sa, 0, sizeof (sa));
     sa.sa_handler = sig_exit;
@@ -1925,6 +2024,7 @@ reswitch:
         switch (ch) {
             case ':':
                 if ((optopt == 'v') && filename != NULL) {
+errx(EXIT_FAILURE, "how did we get here?");
                     /* Allow -v to be specified at end to override write */
                     ch = optopt;
                     optarg = filename;
@@ -1951,16 +2051,16 @@ reswitch:
                 strcpy(device_name, optarg);
                 break;
             case 'e':
-                if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtw may be specified");
-                mode = MODE_ERASE;
+                if (mode & (MODE_ID | MODE_READ | MODE_TERM))
+                    errx(EXIT_FAILURE, "Only one of -iert may be specified");
+                mode |= MODE_ERASE;
                 break;
             case 'f':
                 fill = TRUE;
                 break;
             case 'i':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtw may be specified");
+                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
                 mode = MODE_ID;
                 break;
             case 'l':
@@ -1971,27 +2071,27 @@ reswitch:
                 break;
             case 'r':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtw may be specified");
+                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
                 mode = MODE_READ;
-                filename = optarg;
+//              filename = optarg;
                 break;
             case 't':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtwv may be specified");
+                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
                 mode = MODE_TERM;
                 terminal_mode = TRUE;
                 break;
             case 'w':
-                if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtwv may be specified");
-                mode = MODE_WRITE;
-                filename = optarg;
+                if (mode & (MODE_ID | MODE_READ | MODE_TERM))
+                    errx(EXIT_FAILURE, "Only one of -irtw may be specified");
+                mode |= MODE_WRITE;
+//              filename = optarg;
                 break;
             case 'v':
-                if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "Only one of -eirtwv may be specified");
-                mode = MODE_VERIFY;
-                filename = optarg;
+                if (mode & (MODE_ID | MODE_READ | MODE_TERM))
+                    errx(EXIT_FAILURE, "Only one of -irtv may be specified");
+                mode |= MODE_VERIFY;
+//              filename = optarg;
                 break;
             case 'y':
                 force_yes = TRUE;
@@ -2010,6 +2110,12 @@ reswitch:
 
     argc -= optind;
     argv += optind;
+
+    if (argc > 0) {
+        filename = argv[0];
+        argv++;
+        argc--;
+    }
 
     if (argc > 0)
         errx(EXIT_USAGE, "Too many arguments: %s", argv[0]);
@@ -2031,68 +2137,8 @@ reswitch:
         do_exit(EXIT_FAILURE);
 
     create_threads();
-    switch (mode) {
-        case MODE_UNKNOWN:
-            warnx("You must specify one of: -e -i -r -t or -w");
-            usage(stderr);
-            break;
-        case MODE_TERM:
-            run_terminal_mode();
-            break;
-        case MODE_ERASE:
-            eeprom_erase(baseaddr, len);
-            break;
-        case MODE_ID:
-            eeprom_id();
-            break;
-        case MODE_READ:
-            if ((filename == NULL) || (filename[0] == '\0')) {
-                warnx("You must specify a filename where eeprom contents "
-                      "will be written");
-                usage(stderr);
-                break;
-            }
-            if (baseaddr == ADDR_NOT_SPECIFIED)
-                baseaddr = 0x000000;  // Start of EEPROM
-
-            eeprom_read(filename, baseaddr, len);
-            break;
-        case MODE_WRITE:
-            if ((filename == NULL) || (filename[0] == '\0')) {
-                warnx("You must specify a filename to write to eeprom");
-                usage(stderr);
-                break;
-            }
-            if (baseaddr == ADDR_NOT_SPECIFIED)
-                baseaddr = 0x000000;  // Start of EEPROM
-
-            do {
-                if (eeprom_write(filename, baseaddr, &len) != 0)
-                    break;
-                baseaddr += len;
-                if (baseaddr + len > EEPROM_SIZE_DEFAULT)
-                    break;
-            } while (fill);
-            break;
-        case MODE_VERIFY:
-            if ((filename == NULL) || (filename[0] == '\0')) {
-                warnx("You must specify a filename to verify against eeprom");
-                usage(stderr);
-                break;
-            }
-            if (baseaddr == ADDR_NOT_SPECIFIED)
-                baseaddr = 0x000000;  // Start of EEPROM
-
-            do {
-                if (eeprom_verify(filename, baseaddr, &len, report_max) != 0)
-                    break;
-                baseaddr += len;
-                if (baseaddr + len > EEPROM_SIZE_DEFAULT)
-                    break;
-            } while (fill);
-            break;
-    }
+    rc = run_mode(mode, baseaddr, len, report_max, fill, filename);
     wait_for_tx_writer();
 
-    exit(0);
+    exit(rc);
 }

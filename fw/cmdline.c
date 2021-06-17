@@ -81,6 +81,8 @@ static const cmd_t cmd_list[] = {
     { cmd_reset,   "reset",   0, cmd_reset_help, " [dfu]", "reset CPU" },
     { cmd_time,    "time",    0, cmd_time_help, " cmd|now|watch>",
                         "measure or show time" },
+    { cmd_usb,     "usb",    0, cmd_usb_help, " disable|regs|reset",
+                        "show or change USB status" },
 #else
     { cmd_time,    "time",    0, cmd_time_help, " cmd <cmd>",
                         "measure command execution time" },
