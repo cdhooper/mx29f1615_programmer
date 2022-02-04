@@ -1,7 +1,18 @@
 PA10 has VBUS pull-up, but it should be PA9
+    Fixed in Rev6
 
 BOOT1 is pulled high instead of being pulled low
+    Fixed in Rev6
 
 Reduce depth of USB-C by 0.5mm
+    Fixed in Rev6
+
+Pull in corners a bit more (conflict with case)
+    Fixed in Rev6
+
+Make board 0.4mm narrower
+    Fixed in Rev6
 
 Add header for two more GPIOs
+    Added GPIOs to the extension spares on the ZIF socket in Rev6
+    Added OPT header with WE and RST pins in Rev6

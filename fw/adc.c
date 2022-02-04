@@ -33,7 +33,7 @@
 #define TEMP_V25           1410      // 1.34V-1.52V; 1.41V seems more accurate
 #define TEMP_AVGSLOPE      43        // 4.3
 #define SCALE_VREF         12000000  // 1.20V
-#define V10_DIVIDER_SCALE  1 / 909  // Rev 2+ divider: (10k/1k  0.909V=10V)
+#define V10_DIVIDER_SCALE  1 / 909   // Rev 2+ divider: (10k/1k  0.909V=10V)
 
 #else
 #error STM32 architecture temp sensor slopes must be known

@@ -58,9 +58,8 @@ led_init(void)
                     LED_ALERT_PIN | LED_BUSY_PIN | LED_POWER_PIN);
 #else
     /* Enable Power, Busy, and Alert LEDs */
-    gpio_set_mode(LED_ALERT_PORT, GPIO_MODE_OUTPUT_2_MHZ,
-                  GPIO_CNF_OUTPUT_PUSHPULL,
-                  LED_ALERT_PIN | LED_BUSY_PIN | LED_POWER_PIN);
+    gpio_setmode(LED_ALERT_PORT, LED_ALERT_PIN | LED_BUSY_PIN | LED_POWER_PIN,
+                 GPIO_SETMODE_OUTPUT_PPULL_2);
 #endif
 #endif
 }

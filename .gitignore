@@ -11,6 +11,11 @@
 generated.*.ld
 .gdb_history
 .DS_Store
-objs
 cscope.out
 .cscope_cmd.*
+objs/
+rev1/
+rev2/
+rev3/
+old/
+test/

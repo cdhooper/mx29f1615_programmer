@@ -81,6 +81,9 @@ void
 tim2_isr(void)
 {
     uint32_t flags = TIM_SR(TIM2) & TIM_DIER(TIM2);
+
+    TIM_SR(TIM2) = ~flags;  // Clear observed flags
+
     if (flags & TIM_SR_UIF)
         timer_high++;  // Increment upper bits of 64-bit timer value
 
@@ -88,7 +91,6 @@ tim2_isr(void)
         TIM_DIER(TIM2) &= ~(flags & ~TIM_SR_UIF);
         printf("Unexpected TIM2 IRQ: %04lx\n", flags & ~TIM_SR_UIF);
     }
-    TIM_SR(TIM2) = ~flags;  // Clear previously observed flags by writing 0 to them
 }
 
 #ifdef STM32F1
@@ -130,7 +132,8 @@ timer_tick_get(void)
 void
 timer_init(void)
 {
-    /* TIM3 is the low 16 bits of the 32-bit counter.
+    /*
+     * TIM3 is the low 16 bits of the 32-bit counter.
      * TIM2 is the high 16 bits of the 32-bit counter.
      * We chain a rollover of TIM3 to increment TIM2.
      * TIM2 rollover causes an interrupt, which software

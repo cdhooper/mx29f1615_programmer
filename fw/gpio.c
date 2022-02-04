@@ -14,7 +14,10 @@
 #include "printf.h"
 #include "uart.h"
 #include "gpio.h"
+#include "timer.h"
+#include "utils.h"
 #include "mx29f1615.h"
+#include <string.h>
 
 #ifdef USE_HAL_DRIVER
 /* ST-Micro HAL Library compatibility definitions */
@@ -28,6 +31,8 @@
 #endif /* libopencm3 */
 
 #undef DEBUG_GPIO
+
+#define ARRAY_SIZE(x) (int)((sizeof (x) / sizeof ((x)[0])))
 
 #ifdef STM32F1
 /**
@@ -99,6 +104,14 @@ gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value)
         gpio_set_1(GPIOx, GPIO_Pins);
 }
 
+static uint
+gpio_getv(uint32_t GPIOx, uint pin)
+{
+#ifdef STM32F1
+    return (GPIO_ODR(GPIOx) & BIT(pin));
+#endif
+}
+
 #ifdef USE_HAL_DRIVER
 uint16_t
 gpio_get(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins)
@@ -119,9 +132,31 @@ void gpio_mode_setup(GPIO_TypeDefP GPIOx, uint8_t mode, uint8_t pupd_value,
 #endif
 #endif
 
-
+/*
+ * gpio_setmode
+ * ------------
+ * Sets the complex input/output mode of the GPIO.
+ *
+ * STM32F1: value specifies the GPIO mode and configuration
+ * 0x0 0000: Analog Input
+ * 0x4 0100: Floating input (reset state)
+ * 0x8 1000: Input with pull-up / pull-down
+ * 0xc 1100: Reserved
+ * 0x1 0001: Output 10 MHz, Push-Pull
+ * 0x5 0101: Output 10 MHz, Open-Drain
+ * 0x9 1001: Output 10 MHz, Alt function Push-Pull
+ * 0xd 1101: Output 10 MHz, Alt function Open-Drain
+ * 0x2 0010: Output 2 MHz, Push-Pull
+ * 0x6 0110: Output 2 MHz, Open-Drain
+ * 0xa 1010: Output 2 MHz, Alt function Push-Pull
+ * 0xe 1110: Output 2 MHz, Alt function Open-Drain
+ * 0x3 0011: Output 50 MHz, Push-Pull
+ * 0x7 0111: Output 50 MHz, Open-Drain
+ * 0xb 1011: Output 50 MHz, Alt function Push-Pull
+ * 0xf 1111: Output 50 MHz, Alt function Open-Drain
+ */
 void
-gpio_mode_set(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
+gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
 {
 #ifdef DEBUG_GPIO
     char ch;
@@ -158,15 +193,13 @@ gpio_mode_set(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
         uint32_t newval;
         uint32_t temp;
 
-        if (value == 0)
-            value = 0x08;  // Input with pull-up / pull-down
-
         newval = spread * (value & 0xf);
         temp = (GPIO_CRL(GPIOx) & ~mask) | newval;
 
 #ifdef DEBUG_GPIO
         printf("CRL v=%02x p=%04x sp=%08lx mask=%08lx %08lx^%08lx=%08lx\n",
-               value, GPIO_Pins, spread, mask, GPIO_CRL(GPIOx), temp, GPIO_CRL(GPIOx) ^ temp);
+               value, GPIO_Pins, spread, mask, GPIO_CRL(GPIOx), temp,
+               GPIO_CRL(GPIOx) ^ temp);
 #endif
         GPIO_CRL(GPIOx) = temp;
     }
@@ -177,15 +210,13 @@ gpio_mode_set(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
         uint32_t newval;
         uint32_t temp;
 
-        if (value == 0)
-            value = 0x08;  // Input with pull-up
-
         newval = spread * (value & 0xf);
         temp   = (GPIO_CRH(GPIOx) & ~mask) | newval;
 
 #ifdef DEBUG_GPIO
         printf("CRH v=%02x p=%04x sp=%08lx mask=%08lx %08lx^%08lx=%08lx\n",
-               value, GPIO_Pins, spread, mask, GPIO_CRH(GPIOx), temp, GPIO_CRH(GPIOx) ^ temp);
+               value, GPIO_Pins, spread, mask, GPIO_CRH(GPIOx), temp,
+               GPIO_CRH(GPIOx) ^ temp);
 #endif
         GPIO_CRH(GPIOx) = temp;
     }
@@ -195,7 +226,225 @@ gpio_mode_set(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
     uint32_t mask   = spread * 0x3;
     uint32_t newval = spread * value;
     GPIO_MODER(GPIOx) = (GPIO_MODER(GPIOx) & ~mask) | newval;
+    // XXX: Macros need to be implemented for STM32F4
 #endif
+}
+
+static uint
+gpio_getmode(uint32_t GPIOx, uint pin)
+{
+#ifdef STM32F1
+    if (pin < 8) {
+        uint shift = pin * 4;
+        return ((GPIO_CRL(GPIOx) >> shift) & 0xf);
+    } else {
+        uint shift = (pin - 8) * 4;
+        return ((GPIO_CRH(GPIOx) >> shift) & 0xf);
+    }
+#endif
+}
+
+static uint32_t
+gpio_num_to_gpio(uint num)
+{
+    static const uint32_t gpios[] = {
+        GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF
+    };
+    return (gpios[num]);
+}
+
+#ifdef STM32F1
+static const char * const gpio_mode_short[] = {
+    "A", "O1", "O2", "O5",      // AnalogI, Output {10, 2, 50} MHz
+    "I", "OD1", "OD2", "OD5",   // Input, Output Open Drain
+    "PUD", "AO1", "AO2", "AO5", // Input Pull Up/Down, AF Output
+    "Rsv", "AD1", "AD2", "AD5", // Reserved, AF OpenDrain
+};
+
+static const char * const gpio_mode_long[] = {
+    "Analog Input", "O10 Output", "O2 Output", "O5 Output",
+    "Input", "OD10 Open Drain",
+        "OD2 Open Drain", "OD5 Open Drain",
+    "PUD", "AO10 AltFunc Output",
+        "AO2 AltFunc Output", "AO5 AltFunc Output",
+    "Rsv", "AD1 AltFunc Open Drain",
+        "AD2 AltFunc Open Drain", "AD5 AltFunc Open Drain",
+};
+#endif
+
+void
+gpio_show(int whichport, int whichpin)
+{
+    int port;
+    int pin;
+    uint mode;
+    uint print_all = (whichport < 0) && (whichpin < 0);
+
+    if (print_all) {
+        printf("\nMODE  ");
+        for (pin = 0; pin < 16; pin++)
+            printf("%4d", pin);
+        printf("\n");
+    }
+
+    for (port = 0; port < 5; port++) {
+        uint32_t gpio = gpio_num_to_gpio(port);
+        if ((whichport >= 0) && (port != whichport))
+            continue;
+        if (print_all)
+            printf("GPIO%c ", 'A' + port);
+        for (pin = 0; pin < 16; pin++) {
+            const char *mode_txt;
+            if ((whichpin >= 0) && (pin != whichpin))
+                continue;
+            mode = gpio_getmode(gpio, pin);
+#ifdef STM32F1
+            if (print_all) {
+                mode_txt = gpio_mode_short[mode];
+                if (mode == GPIO_SETMODE_INPUT_PULLUPDOWN)
+                    mode_txt = gpio_getv(gpio, pin) ? "PU" : "PD";
+            } else {
+                mode_txt = gpio_mode_long[mode];
+                if (mode == GPIO_SETMODE_INPUT_PULLUPDOWN)
+                    mode_txt = gpio_getv(gpio, pin) ? "Input PU" : "Input PD";
+            }
+#endif
+            /* Pull-up or pull down depending on output register state */
+            if (print_all) {
+                printf("%4s", mode_txt);
+            } else {
+                char mode_extra[8];
+                uint pinstate = !!(gpio_get(gpio, BIT(pin)));
+                mode_extra[0] = '\0';
+                if ((gpio_getmode(gpio, pin) & 3) != 0) {
+                    /* Output */
+                    uint outval = !!gpio_getv(gpio, pin);
+                    if (outval != pinstate)
+                        sprintf(mode_extra, "=%d>", outval);
+                }
+                printf("P%c%d=%s (%s%d)\n",
+                        'A' + port, pin, mode_txt, mode_extra, pinstate);
+            }
+        }
+        if (print_all)
+            printf("\n");
+    }
+
+    if (!print_all)
+        return;
+
+    printf("\nState ");
+    for (pin = 0; pin < 16; pin++)
+        printf("%4d", pin);
+    printf("\n");
+
+    for (port = 0; port < 5; port++) {
+        uint32_t gpio = gpio_num_to_gpio(port);
+        printf("GPIO%c ", 'A' + port);
+        for (pin = 0; pin < 16; pin++) {
+            uint pinstate = !!(gpio_get(gpio, BIT(pin)));
+            if ((gpio_getmode(gpio, pin) & 3) != 0) {
+                /* Not in an input mode */
+                uint outval = !!gpio_getv(gpio, pin);
+                if (outval != pinstate) {
+                    printf(" %d>%d", outval, pinstate);
+                    continue;
+                }
+            }
+            printf("%4d", pinstate);
+        }
+        printf("\n");
+    }
+}
+
+void
+gpio_assign(int whichport, int whichpin, const char *assign)
+{
+    uint mode;
+    uint gpio;
+    uint pins;
+    if (*assign == '?') {
+        printf("Valid modes:");
+        for (mode = 0; mode < ARRAY_SIZE(gpio_mode_short); mode++)
+            printf(" %s", gpio_mode_short[mode]);
+        printf(" 0 1 A I O PU PD\n");
+        return;
+    }
+    gpio = gpio_num_to_gpio(whichport);
+    pins = BIT(whichpin);
+    for (mode = 0; mode < ARRAY_SIZE(gpio_mode_short); mode++) {
+        if (strcasecmp(gpio_mode_short[mode], assign) == 0) {
+            gpio_setmode(gpio, pins, mode);
+            return;
+        }
+    }
+    switch (*assign) {
+        case 'a':
+        case 'A':
+            if (assign[1] == '\0') {
+                gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_ANALOG);
+                return;
+            }
+            break;
+        case 'i':
+        case 'I':
+            if (assign[1] == '\0') {
+                gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT);
+                return;
+            }
+            break;
+        case 'o':
+        case 'O':
+            if (assign[1] == '\0') {
+                gpio_setmode(gpio, pins, GPIO_SETMODE_OUTPUT_PPULL_2);
+                return;
+            }
+            break;
+        case '0':
+            if (assign[1] == '\0') {
+                gpio_setv(gpio, pins, 0);
+                mode = gpio_getmode(gpio, whichpin);
+                if ((mode & 3) == 0) {
+                    /* Currently an input mode -- default to 2MHz Output */
+                    gpio_setmode(gpio, pins, GPIO_SETMODE_OUTPUT_PPULL_2);
+                }
+                return;
+            }
+            break;
+        case '1':
+            if (assign[1] == '\0') {
+                gpio_setv(gpio, pins, 1);
+                if ((mode & 3) == 0) {
+                    /* Currently an input mode -- default to 2MHz Output */
+                    gpio_setmode(gpio, pins, GPIO_SETMODE_OUTPUT_PPULL_2);
+                }
+                return;
+            }
+            break;
+        case 'p':
+        case 'P':
+            if (assign[2] == '\0') {
+                switch (assign[1]) {
+                    case 'u':
+                    case 'U':
+                        gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PULLUPDOWN);
+                        gpio_setv(gpio, pins, 1);
+                        return;
+                    case 'd':
+                    case 'D':
+                        gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PULLUPDOWN);
+                        gpio_setv(gpio, pins, 0);
+                        return;
+                    default:
+                        break;
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
+    printf("Invalid mode %s for GPIO\n", assign);
 }
 
 #ifndef USE_HAL_DRIVER
@@ -233,23 +482,23 @@ void gpio_init(void)
 
     /* Drive HSE boundary trace */
     gpio_set(CLKBND_Port, CLKBND_Pin);
-    gpio_mode_set(CLKBND_Port, CLKBND_Pin, GPIO_MODE_OUTPUT_2_MHZ);
+    gpio_setmode(CLKBND_Port, CLKBND_Pin, GPIO_MODE_OUTPUT_2_MHZ);
 
     /* Enable EN_VCC and EN_VPP as outputs, default off */
     gpio_setv(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, 1);
-    gpio_mode_set(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_MODE_OUTPUT_10_MHZ);
+    gpio_setmode(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_MODE_OUTPUT_10_MHZ);
 
     gpio_setv(EE_EN_VPP_GPIO_Port, EE_EN_VPP_Pin, 0);
-    gpio_mode_set(EE_EN_VPP_GPIO_Port, EE_EN_VPP_Pin, GPIO_MODE_OUTPUT_10_MHZ);
+    gpio_setmode(EE_EN_VPP_GPIO_Port, EE_EN_VPP_Pin, GPIO_MODE_OUTPUT_10_MHZ);
 
 #if 0
     /* Enable PROM_OE and PROM_CE as inputs, pulled down (down is ODR bit=0) */
-    gpio_mode_set(CE_GPIO_Port, CE_Pin, GPIO_MODE_INPUT);
-    gpio_mode_set(OE_GPIO_Port, OE_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(CE_GPIO_Port, CE_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(OE_GPIO_Port, OE_Pin, GPIO_MODE_INPUT);
 #endif
 
     /* Inputs */
-    gpio_mode_set(BUTTON1_GPIO_Port, BUTTON1_GPIO_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(BUTTON1_GPIO_Port, BUTTON1_GPIO_Pin, GPIO_MODE_INPUT);
 #endif
     mx_disable();
 }

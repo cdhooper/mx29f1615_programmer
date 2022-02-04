@@ -368,3 +368,109 @@ usage_fault_handler(void)
     usage_fault_handler_impl(sp);
     EXCEPTION_EXIT;   // Restore processor registers
 }
+
+static void __attribute__((noinline))
+unknown_handler_impl(const void *sp)
+{
+    puts("Unknown fault");
+    fault_show_regs(sp);
+    led_alert(1);
+    while (1)
+        cmdline();
+}
+
+/*
+ * unknown_handler
+ * ---------------
+ * Catches all STM32 interrupts and exceptions not handled by explicit
+ * handler functions in this code.
+ *
+ * Example, trigger window watchdog interrupt:
+ *    CMD> cb 0xe000e100 1
+ *    CMD> cb 0xe000e200 1
+ *
+ *    Unknown fault
+ *    R0=e000e200 R3=2000fdf9 R6=20000f94  R9=2000fdf8 R12=00000000 PC=08001678
+ *    R1=00000001 R4=00000000 R7=20000f98 R10=e000e200 PSR=21000200 SP=2000fd88
+ *    R2=00000001 R5=00000000 R8=00000000 R11=00000000 LRE=fffffff9 LR=08002d51
+ *    SCB ICSR: 00000810  vect=0x10
+ */
+void unknown_handler(void);
+void __attribute__((naked))
+unknown_handler(void)
+{
+    void *sp;
+
+    EXCEPTION_ENTRY;  // Save processor registers
+    unknown_handler_impl(sp);
+    EXCEPTION_EXIT;   // Restore processor registers
+}
+
+void wwdg_isr(void) __attribute__((alias("unknown_handler")));
+void pvd_isr(void) __attribute__((alias("unknown_handler")));
+void tamper_isr(void) __attribute__((alias("unknown_handler")));
+void rtc_isr(void) __attribute__((alias("unknown_handler")));
+void flash_isr(void) __attribute__((alias("unknown_handler")));
+void rcc_isr(void) __attribute__((alias("unknown_handler")));
+void exti0_isr(void) __attribute__((alias("unknown_handler")));
+void exti1_isr(void) __attribute__((alias("unknown_handler")));
+void exti2_isr(void) __attribute__((alias("unknown_handler")));
+void exti3_isr(void) __attribute__((alias("unknown_handler")));
+void exti4_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel1_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel2_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel3_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel4_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel5_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel6_isr(void) __attribute__((alias("unknown_handler")));
+void dma1_channel7_isr(void) __attribute__((alias("unknown_handler")));
+void adc1_2_isr(void) __attribute__((alias("unknown_handler")));
+void usb_hp_can_tx_isr(void) __attribute__((alias("unknown_handler")));
+void usb_lp_can_rx0_isr(void) __attribute__((alias("unknown_handler")));
+void can_rx1_isr(void) __attribute__((alias("unknown_handler")));
+void can_sce_isr(void) __attribute__((alias("unknown_handler")));
+void exti9_5_isr(void) __attribute__((alias("unknown_handler")));
+void tim1_brk_isr(void) __attribute__((alias("unknown_handler")));
+void tim1_up_isr(void) __attribute__((alias("unknown_handler")));
+void tim1_trg_com_isr(void) __attribute__((alias("unknown_handler")));
+void tim1_cc_isr(void) __attribute__((alias("unknown_handler")));
+// void tim2_isr(void) __attribute__((alias("unknown_handler")));
+void tim3_isr(void) __attribute__((alias("unknown_handler")));
+void tim4_isr(void) __attribute__((alias("unknown_handler")));
+void i2c1_ev_isr(void) __attribute__((alias("unknown_handler")));
+void i2c1_er_isr(void) __attribute__((alias("unknown_handler")));
+void i2c2_ev_isr(void) __attribute__((alias("unknown_handler")));
+void i2c2_er_isr(void) __attribute__((alias("unknown_handler")));
+void spi1_isr(void) __attribute__((alias("unknown_handler")));
+void spi2_isr(void) __attribute__((alias("unknown_handler")));
+// void usart1_isr(void) __attribute__((alias("unknown_handler")));
+void usart2_isr(void) __attribute__((alias("unknown_handler")));
+void usart3_isr(void) __attribute__((alias("unknown_handler")));
+void exti15_10_isr(void) __attribute__((alias("unknown_handler")));
+void rtc_alarm_isr(void) __attribute__((alias("unknown_handler")));
+void usb_wakeup_isr(void) __attribute__((alias("unknown_handler")));
+void tim8_brk_isr(void) __attribute__((alias("unknown_handler")));
+void tim8_up_isr(void) __attribute__((alias("unknown_handler")));
+void tim8_trg_com_isr(void) __attribute__((alias("unknown_handler")));
+void tim8_cc_isr(void) __attribute__((alias("unknown_handler")));
+void adc3_isr(void) __attribute__((alias("unknown_handler")));
+void fsmc_isr(void) __attribute__((alias("unknown_handler")));
+void sdio_isr(void) __attribute__((alias("unknown_handler")));
+void tim5_isr(void) __attribute__((alias("unknown_handler")));
+void spi3_isr(void) __attribute__((alias("unknown_handler")));
+void uart4_isr(void) __attribute__((alias("unknown_handler")));
+void uart5_isr(void) __attribute__((alias("unknown_handler")));
+void tim6_isr(void) __attribute__((alias("unknown_handler")));
+void tim7_isr(void) __attribute__((alias("unknown_handler")));
+void dma2_channel1_isr(void) __attribute__((alias("unknown_handler")));
+void dma2_channel2_isr(void) __attribute__((alias("unknown_handler")));
+void dma2_channel3_isr(void) __attribute__((alias("unknown_handler")));
+void dma2_channel4_5_isr(void) __attribute__((alias("unknown_handler")));
+void dma2_channel5_isr(void) __attribute__((alias("unknown_handler")));
+void eth_isr(void) __attribute__((alias("unknown_handler")));
+void eth_wkup_isr(void) __attribute__((alias("unknown_handler")));
+void can2_tx_isr(void) __attribute__((alias("unknown_handler")));
+void can2_rx0_isr(void) __attribute__((alias("unknown_handler")));
+void can2_rx1_isr(void) __attribute__((alias("unknown_handler")));
+void can2_sce_isr(void) __attribute__((alias("unknown_handler")));
+// void otg_fs_isr(void) __attribute__((alias("unknown_handler")));

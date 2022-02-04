@@ -207,26 +207,26 @@ oe_output(uint value)
 static void
 ce_output_enable(void)
 {
-    gpio_mode_set(CE_GPIO_Port, CE_Pin, GPIO_MODE_OUTPUT_PP);
+    gpio_setmode(CE_GPIO_Port, CE_Pin, GPIO_SETMODE_OUTPUT_PPULL_2);
 }
 
 static void
 ce_output_disable(void)
 {
-    gpio_mode_set(CE_GPIO_Port, CE_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(CE_GPIO_Port, CE_Pin, GPIO_SETMODE_INPUT);
     ce_output(0);
 }
 
 static void
 oe_output_enable(void)
 {
-    gpio_mode_set(OE_GPIO_Port, OE_Pin, GPIO_MODE_OUTPUT_PP);
+    gpio_setmode(OE_GPIO_Port, OE_Pin, GPIO_SETMODE_OUTPUT_PPULL_50);
 }
 
 static void
 oe_output_disable(void)
 {
-    gpio_mode_set(OE_GPIO_Port, OE_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(OE_GPIO_Port, OE_Pin, GPIO_SETMODE_INPUT);
     oe_output(0);
 }
 
@@ -238,7 +238,7 @@ vcc_enable(void)
 #endif
     /* Drive EN_VCC low to turn on VCC */
     gpio_setv(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, 0);
-    gpio_mode_set(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_MODE_OUTPUT_PP);
+    gpio_setmode(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_SETMODE_OUTPUT_PPULL_2);
 }
 
 static void
@@ -253,7 +253,7 @@ vcc_disable(void)
      * 5V.
      */
     gpio_setv(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, 1);
-    gpio_mode_set(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_MODE_INPUT);
+    gpio_setmode(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_SETMODE_INPUT);
 }
 
 /*
@@ -518,7 +518,6 @@ mx_wait_for_done_status(uint32_t timeout_usec, int verbose, int mode)
             }
             break;  // done
         }
-        timer_delay_msec(1);
     }
     if (status & (MX_STATUS_FAIL_PROGRAM | MX_STATUS_FAIL_ERASE)) {
         printf("    %s failed %02x\n",
@@ -886,6 +885,9 @@ mx_print_bits(uint32_t value, int high_bit, char *prefix)
  *      at a time) to verify:
  *      A) Each line is pulled up in less than 1 ms
  *      B) No other line is affected by that pull-up
+ *   4) Pins one row beyond where the EEPROM should be are tested to verify
+ *      that they float.
+ *   5) Power is applied
  */
 int
 mx_verify(int verbose)

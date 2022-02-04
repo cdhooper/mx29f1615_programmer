@@ -108,9 +108,31 @@ typedef uint32_t GPIO_TypeDefP;
 
 #endif /* libopencm3 */
 
+/* Values for gpio_setmode() */
+#ifdef STM32F1
+#define GPIO_SETMODE_INPUT_ANALOG        0x0  // Analog Input
+#define GPIO_SETMODE_INPUT               0x4  // Floating input (reset state)
+#define GPIO_SETMODE_INPUT_PULLUPDOWN    0x8  // Input with pull-up / pull-down
+#define GPIO_SETMODE_OUTPUT_PPULL_10     0x1  // 10 MHz, Push-Pull
+#define GPIO_SETMODE_OUTPUT_ODRAIN_10    0x5  // 10 MHz, Open-Drain
+#define GPIO_SETMODE_OUTPUT_AF_PPULL_10  0x9  // 10 MHz, Alt func. Push-Pull
+#define GPIO_SETMODE_OUTPUT_AF_ODRAIN_10 0xd  // 10 MHz, Alt func. Open-Drain
+#define GPIO_SETMODE_OUTPUT_PPULL_2      0x2  // 2 MHz, Push-Pull
+#define GPIO_SETMODE_OUTPUT_ODRAIN_2     0x6  // 2 MHz, Open-Drain
+#define GPIO_SETMODE_OUTPUT_AF_PPULL_2   0xa  // 2 MHz, Alt func. Push-Pull
+#define GPIO_SETMODE_OUTPUT_AF_ODRAIN_2  0xe  // 2 MHz, Alt func. Open-Drain
+#define GPIO_SETMODE_OUTPUT_PPULL_50     0x3  // 50 MHz, Push-Pull
+#define GPIO_SETMODE_OUTPUT_ODRAIN_50    0x7  // 50 MHz, Open-Drain
+#define GPIO_SETMODE_OUTPUT_AF_PPULL_50  0xb  // 50 MHz, Alt func. Push-Pull
+#define GPIO_SETMODE_OUTPUT_AF_ODRAIN_50 0xf  // 50 MHz, Alt func. Open-Drain
+#endif
+
 void     gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value);
-void     gpio_mode_set(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value);
+void     gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value);
 void     gpio_init(void);
+void     gpio_show(int whichport, int whichpin);
+void     gpio_assign(int whichport, int whichpin, const char *assign);
+
 
 #endif /* _GPIO_H */
 

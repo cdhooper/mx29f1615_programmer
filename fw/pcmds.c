@@ -21,6 +21,7 @@
 #include "timer.h"
 #include "uart.h"
 #include "cmds.h"
+#include "gpio.h"
 #include "pcmds.h"
 #include "adc.h"
 #include "utils.h"
@@ -57,7 +58,10 @@
 #endif /* libopencm3 */
 
 const char cmd_cpu_help[] =
-"cpu regs - show CPU registers\n";
+"cpu regs - show CPU registers";
+
+const char cmd_gpio_help[] =
+"gpio [name=value/mode/?] - display or set GPIOs";
 
 const char cmd_prom_help[] =
 "prom cmd <cmd> [<addr>] - send a 16-bit command to the EEPROM chip\n"
@@ -68,17 +72,17 @@ const char cmd_prom_help[] =
 "prom status [clear]     - display or clear EEPROM status\n"
 "prom verify             - verify PROM is connected\n"
 "prom vpp [<value>]      - show or set voltages (V10FBADC 0-fff around 0.54V)\n"
-"prom write <addr> <len> - write binary data to EEPROM (from terminal)\n";
+"prom write <addr> <len> - write binary data to EEPROM (from terminal)";
 
 const char cmd_reset_help[] =
 "reset      - reset CPU\n"
 "reset dfu  - reset into DFU programming mode\n"
-"reset usb  - reset and restart USB interface\n";
+"reset usb  - reset and restart USB interface";
 
 const char cmd_usb_help[] =
 "usb disable - reset and disable USB\n"
 "usb regs    - display USB device registers\n"
-"usb reset   - reset and restart USB device\n";
+"usb reset   - reset and restart USB device";
 
 typedef struct {
     const char *const name;
@@ -93,7 +97,7 @@ static const memmap_t memmap[] = {
     { "AFIO",   AFIO_BASE },
     { "BKP",    BACKUP_REGS_BASE },
 #endif
-#if defined(STM32F103xE) && defined(USE_HAL_DRIVER)
+#if defined(STM32F103xE)
     { "BKP",    RTC_BKP_BASE },
 #endif
     { "DAC",    DAC_BASE },
@@ -505,5 +509,57 @@ cmd_usb(int argc, char * const *argv)
         printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);
     }
+    return (RC_SUCCESS);
+}
+
+rc_t
+cmd_gpio(int argc, char * const *argv)
+{
+    int arg;
+    if (argc < 2) {
+        gpio_show(-1, -1);
+        return (RC_SUCCESS);
+    }
+
+    for (arg = 1; arg < argc; arg++) {
+        const char *ptr = argv[arg];
+        int port = -1;
+        int pin = -1;
+        const char *assign = NULL;
+        if ((*ptr == 'p') || (*ptr == 'P'))
+            ptr++;
+
+        /* Find port, if specified */
+        if ((*ptr >= 'a') && (*ptr <= 'f'))
+            port = *(ptr++) - 'a';
+        else if ((*ptr >= 'A') && (*ptr <= 'F'))
+            port = *(ptr++) - 'A';
+
+        /* Find pin, if specified */
+        if ((*ptr >= '0') && (*ptr <= '9')) {
+            pin = *(ptr++) - '0';
+            if ((*ptr >= '0') && (*ptr <= '9'))
+                pin = pin * 10 + *(ptr++) - '0';
+        }
+
+        if (*ptr == '=') {
+            assign = ptr + 1;
+            ptr = "";
+            if ((port == -1) || (pin == -1)) {
+                printf("You must specify the GPIO to assign: %s\n", argv[arg]);
+                return (RC_BAD_PARAM);
+            }
+        }
+        if (((port == -1) && (pin == -1)) || (pin > 15) || (*ptr != '\0')) {
+            printf("Invalid argument %s\n", argv[arg]);
+            return (RC_BAD_PARAM);
+        }
+
+        if (assign != NULL)
+            gpio_assign(port, pin, assign);
+        else
+            gpio_show(port, pin);
+    }
+
     return (RC_SUCCESS);
 }

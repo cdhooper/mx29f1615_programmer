@@ -61,6 +61,9 @@ static const cmd_t cmd_list[] = {
     { cmd_d,       "d",       1, cmd_d_help,
                         "[bwlqohRS] <addr> [<len>]", "display memory" },
     { cmd_echo,    "echo",    0, NULL, " <text>", "display text" },
+#ifdef EMBEDDED_CMD
+    { cmd_gpio,    "gpio",    1, cmd_gpio_help, " show", "show GPIOs" },
+#endif
     { cmd_ignore,  "ignore",  0, NULL, " <cmd>", "ignore result of command" },
     { cmd_help,    "help",    0, NULL, " [<cmd>]", "display help" },
     { cmd_history, "history", 4, NULL, "", "show history" },
@@ -70,7 +73,9 @@ static const cmd_t cmd_list[] = {
     { cmd_map,     "map",     1, NULL, "", "show memory map" },
 #endif
     { cmd_echo,    "print",   0, NULL, " <text>", "display text" },
+#ifndef EMBEDDED_CMD
     { cmd_echo,    "quit",    1, NULL, "", "exit program" },
+#endif
     { cmd_patt,    "patt",    2, cmd_patt_help,
                         "[bwlqoh] <addr> <len> <pattern>", "pattern memory" },
     { cmd_test,    "test",    2, cmd_test_help,

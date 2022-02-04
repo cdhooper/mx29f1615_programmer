@@ -99,7 +99,8 @@ static const struct rcc_clock_scale rcc_clock_config = {
 };
 #endif
 
-void clock_init(void)
+void
+clock_init(void)
 {
 #ifdef STM32F4
     rcc_clock_setup_pll(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_168MHZ]);
@@ -110,17 +111,20 @@ void clock_init(void)
 #endif
 }
 
-uint32_t clock_get_hclk(void)
+uint32_t
+clock_get_hclk(void)
 {
     return (rcc_clock_config.ahb_frequency);
 }
 
-uint32_t clock_get_apb1(void)
+uint32_t
+clock_get_apb1(void)
 {
     return (rcc_clock_config.apb1_frequency);
 }
 
-uint32_t clock_get_apb2(void)
+uint32_t
+clock_get_apb2(void)
 {
     return (rcc_clock_config.apb2_frequency);
 }

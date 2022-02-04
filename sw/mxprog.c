@@ -1828,7 +1828,8 @@ find_mx_programmer(void)
     if (dirp == NULL)
         return;  // Old version of Linux?
     while ((dent = readdir(dirp)) != NULL) {
-        if (strstr(dent->d_name, "MX29F1615") != 0) {
+        if ((strstr(dent->d_name, "MX29F1615") != 0) ||
+            (strstr(dent->d_name, "KickSmash") != 0)) {
             snprintf(device_name, sizeof (device_name), "%s/%s",
                      LINUX_BY_ID_DIR, dent->d_name);
             closedir(dirp);

@@ -416,6 +416,7 @@ uart_init(void)
     usart_set_flow_control(CONSOLE_USART, USART_FLOWCONTROL_NONE);
     usart_enable(CONSOLE_USART);
 
+#undef UART_DEBUG
 #ifdef UART_DEBUG
     for (int y = 0; y < 10; y++) {
         for (int x = 0; x < 26; x++) {

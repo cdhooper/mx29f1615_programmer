@@ -80,7 +80,6 @@ button_init(void)
                     BUTTON1_GPIO_Pin);
 #else
     /* Board has external pull-down */
-    gpio_set_mode(BUTTON1_GPIO_Port, GPIO_MODE_INPUT, GPIO_CNF_INPUT_FLOAT,
-                  BUTTON1_GPIO_Pin);
+    gpio_setmode(BUTTON1_GPIO_Port, BUTTON1_GPIO_Pin, GPIO_SETMODE_INPUT);
 #endif
 }

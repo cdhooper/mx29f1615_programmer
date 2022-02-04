@@ -170,7 +170,7 @@ $(OBJDIR):
 
 $(OPENCM3_DIR) $(OPENCM3_HEADER):
 	@echo Cloning $@
-	git submodule update --init
+	git submodule update --init --recursive
 	make -C $(OPENCM3_DIR) -j8
 
 $(OPENCM3_LIB): | $(OPENCM3_DIR)
@@ -201,20 +201,35 @@ $(UDEV_FILE_PATHS) &:
 just-dfu: $(UDEV_FILE_PATHS)
 	$(DFU_UTIL) --device 0483:df11 --alt 0 --download $(BINARY).bin --dfuse-address 0x08000000:leave
 
+dfu-unprotect: $(UDEV_FILE_PATHS)
+	$(DFU_UTIL) -s 0:force:unprotect -a 0 --device 0483:df11 --alt 0 --download $(BINARY).bin
+
 # Write STM32 flash using ST-Link
-just-flash: $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin $(UDEV_FILE_PATHS)
+just-flash: just-erase $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin $(UDEV_FILE_PATHS)
 	$(ST_TOOLS_PATH)/st-flash --reset write $(BINARY).bin 0x08000000
 
 # Erase STM32 flash using ST-Link
 just-erase: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --debug --flash=0x100000 erase
+	$(ST_TOOLS_PATH)/st-flash --flash=0x100000 erase
+
+# Protect/unprotect/clobber flash by writing the option byte area
+# The following can also be done by the STM32CubeProgrammer.
+# F105 unlocked  1ffff800: a5 5a 07 f8 00 ff 00 ff ff 00 ff 00 ff 00 ff 00
+# F105 protect   1ffff800: 00 ff 07 f8 ff 00 ff 00 00 ff 00 ff 00 ff 00 ff
+# F105 clobber   1ffff800: 00 00 00 00 00 03 00 03 00 ff 00 ff 00 ff 00 ff
+just-unprotect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-flash --reset write flash_unprotect.bin 0x1ffff800
+just-protect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-flash --reset write flash_protect.bin 0x1ffff800
+just-clobber: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-flash --reset write flash_clobber.bin 0x1ffff800
 
 dfu: all just-dfu
 flash: all just-flash
 
 # Connect to remote STM32 via ST-Link (follow with "make gdb")
 stlink: | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-util
+	$(ST_TOOLS_PATH)/st-util --no-reset
 
 # Get ST-TOOLS
 $(ST_BUILD_DIR) get-stutils:
@@ -222,9 +237,10 @@ $(ST_BUILD_DIR) get-stutils:
 
 # Build ST-TOOLS
 $(ST_TOOLS_PATH)/st-flash build-stutils: | $(ST_BUILD_DIR)
-	make -C $(ST_BUILD_DIR)
+	make -C $(ST_BUILD_DIR) CMAKEFLAGS=-DCMAKE_INSTALL_PREFIX=.
+	ln -s ../../config $(ST_BUILD_DIR)/build/Release/stlink
 
 gdb:
 	gdb -q -x .gdbinit $(BINARY).elf
 
-.PHONY: images clean get-stutils build_stutils stlink dfu flash just-dfu just-flash clean size elf bin hex srec list udev-files
+.PHONY: images clean get-stutils build_stutils stlink dfu flash just-dfu just-flash just-unprotect just-dfu dfu-unprotect clean size elf bin hex srec list udev-files
