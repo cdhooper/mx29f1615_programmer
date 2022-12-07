@@ -83,18 +83,33 @@ spread16to32(uint32_t v)
 #endif
 
 
+/*
+ * gpio_set_1
+ * ----------
+ * Drives the specified GPIO bits to 1 values without affecting other bits.
+ */
 static void
 gpio_set_1(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins)
 {
     GPIO_BSRR(GPIOx) = GPIO_Pins;
 }
 
+/*
+ * gpio_set_0
+ * ----------
+ * Drives the specified GPIO bits to 0 values without affecting other bits.
+ */
 static void
 gpio_set_0(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins)
 {
     GPIO_BSRR(GPIOx) = GPIO_Pins << 16;
 }
 
+/*
+ * gpio_setv
+ * ---------
+ * Sets the specified GPIO bits to 0 or 1 values without affecting other bits.
+ */
 void
 gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value)
 {
@@ -104,6 +119,12 @@ gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value)
         gpio_set_1(GPIOx, GPIO_Pins);
 }
 
+/*
+ * gpio_getv
+ * ---------
+ * Gets the current output values (not input values) of the specified GPIO
+ * port and pins.
+ */
 static uint
 gpio_getv(uint32_t GPIOx, uint pin)
 {
@@ -230,6 +251,11 @@ gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
 #endif
 }
 
+/*
+ * gpio_getmode
+ * ------------
+ * Get the input/output mode of the specified GPIO pins.
+ */
 static uint
 gpio_getmode(uint32_t GPIOx, uint pin)
 {
@@ -244,6 +270,11 @@ gpio_getmode(uint32_t GPIOx, uint pin)
 #endif
 }
 
+/*
+ * gpio_num_to_gpio
+ * ----------------
+ * Convert the specified GPIO number to its respective port address.
+ */
 static uint32_t
 gpio_num_to_gpio(uint num)
 {
@@ -262,16 +293,21 @@ static const char * const gpio_mode_short[] = {
 };
 
 static const char * const gpio_mode_long[] = {
-    "Analog Input", "O10 Output", "O2 Output", "O5 Output",
-    "Input", "OD10 Open Drain",
-        "OD2 Open Drain", "OD5 Open Drain",
-    "PUD", "AO10 AltFunc Output",
-        "AO2 AltFunc Output", "AO5 AltFunc Output",
-    "Rsv", "AD1 AltFunc Open Drain",
-        "AD2 AltFunc Open Drain", "AD5 AltFunc Open Drain",
+    "Analog Input", "O10 Output 10MHz", "O2 Output 2MHz", "O5 Output 50MHz",
+    "Input", "OD10 Open Drain 10MHz",
+        "OD2 Open Drain 2MHz", "OD5 Open Drain 50MHz",
+    "PUD", "AO10 AltFunc Output 10MHz",
+        "AO2 AltFunc Output 2MHz", "AO5 AltFunc Output 50MHz",
+    "Rsv", "AD1 AltFunc Open Drain 10MHz",
+        "AD2 AltFunc Open Drain 2MHz", "AD5 AltFunc Open Drain 50MHz",
 };
 #endif
 
+/*
+ * gpio_show
+ * ---------
+ * Display current values and input/output state of GPIOs.
+ */
 void
 gpio_show(int whichport, int whichpin)
 {
@@ -357,6 +393,12 @@ gpio_show(int whichport, int whichpin)
     }
 }
 
+/*
+ * gpio_assign
+ * -----------
+ * Assign a GPIO input/output state or output value according to the
+ * user-specified string.
+ */
 void
 gpio_assign(int whichport, int whichpin, const char *assign)
 {
@@ -448,7 +490,13 @@ gpio_assign(int whichport, int whichpin, const char *assign)
 }
 
 #ifndef USE_HAL_DRIVER
-void gpio_init(void)
+/*
+ * gpio_init
+ * ---------
+ * Initialize most board GPIO states.
+ */
+void
+gpio_init(void)
 {
     rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_GPIOB);

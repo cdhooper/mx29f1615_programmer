@@ -330,10 +330,12 @@ print_reading(int value, char *suffix)
     }
 }
 
-/* adc_get_scale() captures the current scale value from the sensor table.
- *                 This value is based on the internal reference voltage
- *                 and is then used to appropriately scale all other ADC
- *                 readings.
+/*
+ * adc_get_scale
+ * -------------
+ * Captures the current scale value from the sensor table.  This value is
+ * based on the internal reference voltage and is then used to appropriately
+ * scale all other ADC readings.
  */
 static uint
 adc_get_scale(uint16_t adc0_value)

@@ -527,8 +527,8 @@ CDC_Transmit_FS(uint8_t *buf, uint16_t len)
 #ifdef DEBUG_NO_USB
     return (USBD_OK);
 #endif
-    uint64_t timeout = timer_tick_plus_msec(10);
-    bool     first = true;
+    uint64_t timeout = 0;
+
     if (usb_console_active == false)
         return (-1);
     preparing_packet = true;
@@ -543,12 +543,11 @@ CDC_Transmit_FS(uint8_t *buf, uint16_t len)
         rc = usbd_ep_write_packet(usbd_gdev, 0x82, buf, tlen);
         usb_unmask_interrupts();
         if (rc == 0) {
-            if (first == true)
+            if (timeout == 0)
                 return (-1);
             if (timer_tick_has_elapsed(timeout))
                 return (-1);
         } else {
-            first = false;
             len -= tlen;
             buf += tlen;
             timeout = timer_tick_plus_msec(10);
@@ -699,8 +698,8 @@ cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req,
     static struct usb_cdc_line_coding line_coding = {
         .dwDTERate   = 115200,
         .bCharFormat = USB_CDC_1_STOP_BITS,
-	.bParityType = USB_CDC_NO_PARITY,
-	.bDataBits   = 0x08,
+        .bParityType = USB_CDC_NO_PARITY,
+        .bDataBits   = 0x08,
     };
     switch (req->bRequest) {
         case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
@@ -726,7 +725,7 @@ cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req,
         case USB_CDC_REQ_SET_LINE_CODING:
             /* Windows 10 VCP driver requires this */
             if (*len < sizeof (struct usb_cdc_line_coding))
-                return USBD_REQ_NOTSUPP;
+                return (USBD_REQ_NOTSUPP);
             memcpy(&line_coding, *buf, sizeof (struct usb_cdc_line_coding));
             return (USBD_REQ_HANDLED);
         case USB_CDC_REQ_GET_LINE_CODING:
@@ -808,7 +807,8 @@ static void cdcacm_set_config(usbd_device *usbd_dev, uint16_t wValue)
 
 #ifdef USING_USB_INTERRUPT
 #ifdef STM32F103xE
-void usb_lp_can_rx0_isr(void)
+void
+usb_lp_can_rx0_isr(void)
 {
     static uint16_t preg1 = 0;
     static uint16_t preg2 = 0;
@@ -833,7 +833,8 @@ void usb_lp_can_rx0_isr(void)
     preg1 = reg;
 }
 #else /* STM32F4 / STM32F107 */
-void otg_fs_isr(void)
+void
+otg_fs_isr(void)
 {
     usbd_poll(usbd_gdev);
 }
