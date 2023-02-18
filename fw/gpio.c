@@ -317,7 +317,14 @@ gpio_show(int whichport, int whichpin)
     uint print_all = (whichport < 0) && (whichpin < 0);
 
     if (print_all) {
-        printf("\nMODE  ");
+        printf("EEPROM A0-A15=PE0-PE5 A16-A19=PC6-PC9\n"
+               "EEPROM D0-D15=PD0-PD15  CE=PB14 OE=PB15\n"
+               "Misc   AbortButton=PA0 EN_VCC=PB12 EN_VPP=PB13\n"
+               "Sense  V3P3=PA1 V10DAC=PA2 V10=PA3 V10DAC=PA4 V5=PC4 "
+                    "V5CL=PC5\n"
+               "LED    Power=PA5 Busy=PA6 Alert=PA7\n"
+               "USB    V5=PA9 DM=PA11 DP=PA12\n");
+        printf("MODE  ");
         for (pin = 0; pin < 16; pin++)
             printf("%4d", pin);
         printf("\n");
