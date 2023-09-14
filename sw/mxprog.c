@@ -40,6 +40,7 @@
 static const struct option long_opts[] = {
     { "all",      no_argument,       NULL, 'A' },
     { "addr",     required_argument, NULL, 'a' },
+    { "bank",     required_argument, NULL, 'b' },
     { "delay",    required_argument, NULL, 'D' },
     { "device",   required_argument, NULL, 'd' },
     { "erase",    no_argument,       NULL, 'e' },
@@ -59,6 +60,7 @@ static char short_opts[] = {
     ':',         // Missing argument
     'A',         // --all
     'a', ':',    // --addr <addr>
+    'b', ':',    // --bank <num>
     'D', ':',    // --delay <num>
     'd', ':',    // --device <filename>
     'e',         // --erase
@@ -79,6 +81,7 @@ static const char usage_text[] =
 "term <opts> <dev>\n"
 "    -A --all               show all verify miscompares\n"
 "    -a --addr <addr>       starting EEPROM address\n"
+"    -b --bank <num>        starting EEPROM address as multiple of file size\n"
 "    -D --delay             pacing delay between sent characters (ms)\n"
 "    -d --device <filename> serial device to use (e.g. /dev/ttyACM0)\n"
 "    -e --erase             erase EEPROM (use -a <addr> for sector erase)\n"
@@ -86,13 +89,13 @@ static const char usage_text[] =
 "    -h --help              display usage\n"
 "    -i --identify          identify installed EEPROM\n"
 "    -l --len <num>         length in bytes\n"
-"    -r <filename>          read EEPROM and write to file\n"
-"    -v <filename>          verify file matches EEPROM contents\n"
-"    -w <filename>          read file and write to EEPROM\n"
-"    -t                     just act in terminal mode (CLI)\n"
+"    -r --read <filename>   read EEPROM and write to file\n"
+"    -v --verify <filename> verify file matches EEPROM contents\n"
+"    -w --write <filename>  read file and write to EEPROM\n"
+"    -t --term              just act in terminal mode (CLI)\n"
+"    -y --yes               answer all prompts with 'yes'\n"
 "\n"
-"Specify the TTY name to open\n"
-"Example:\n"
+"Example (including specific TTY to open):\n"
 #ifdef OSX
 "    mxprog -d /dev/cu.usbmodem* -i\n"
 #else
@@ -115,6 +118,7 @@ static const char usage_text[] =
 
 #define EEPROM_SIZE_DEFAULT       0x200000    // 2MB
 #define EEPROM_SIZE_NOT_SPECIFIED 0xffffffff
+#define BANK_NOT_SPECIFIED        0xffffffff
 #define ADDR_NOT_SPECIFIED        0xffffffff
 
 #define DATA_CRC_INTERVAL         256  // How often CRC is sent (bytes)
@@ -1288,6 +1292,8 @@ ask_again:
  * eeprom_erase() sends a command to the programmer to erase a sector,
  *                a range of sectors, or the entire EEPROM.
  *
+ * @param  [in]  bank  - Starting address addition multiplier for erase
+ *                       length or BANK_NOT_SPECIFIED.
  * @param  [in]  addr  - The EEPROM starting address to erase.
  *                       ADDR_NOT_SPECIFIED will cause the entire chip to
  *                       be erased.
@@ -1297,7 +1303,7 @@ ask_again:
  * @return       None.
  */
 static int
-eeprom_erase(uint addr, uint len)
+eeprom_erase(uint bank, uint addr, uint len)
 {
     int  rxcount;
     char cmd_output[1024];
@@ -1305,6 +1311,12 @@ eeprom_erase(uint addr, uint len)
     int  count;
     int  no_data;
     char prompt[80];
+
+    if (bank != BANK_NOT_SPECIFIED) {
+        if (addr == ADDR_NOT_SPECIFIED)
+            addr = 0;
+        addr += bank * len;
+    }
 
     if (addr == ADDR_NOT_SPECIFIED) {
         /* Chip erase */
@@ -1375,6 +1387,8 @@ eeprom_id(void)
  *               writing output to a file.
  *
  * @param  [in]  filename        - The file to write using EEPROM contents.
+ * @param  [in]  bank            - Starting address addition multiplier for
+ *                                 read length or BANK_NOT_SPECIFIED.
  * @param  [in]  addr            - The EEPROM starting address.
  * @param  [in]  len             - The length to write. A value of
  *                                 EEPROM_SIZE_NOT_SPECIFIED will use the
@@ -1383,14 +1397,20 @@ eeprom_id(void)
  * @exit         EXIT_FAILURE - The program will terminate on file access error.
  */
 static void
-eeprom_read(const char *filename, uint addr, uint len)
+eeprom_read(const char *filename, uint bank, uint addr, uint len)
 {
     char cmd[64];
     char *eebuf;
     int rxcount;
 
+    if (addr == ADDR_NOT_SPECIFIED)
+        addr = 0x000000;  // Start of EEPROM
+
     if (len == EEPROM_SIZE_NOT_SPECIFIED)
         len = EEPROM_SIZE_DEFAULT - addr;
+
+    if (bank != BANK_NOT_SPECIFIED)
+        addr += bank * len;
 
     eebuf = malloc(len + 4);
     if (eebuf == NULL)
@@ -1431,17 +1451,13 @@ eeprom_read(const char *filename, uint addr, uint len)
  *
  * @param  [in]  filename        - The file to write to the EEPROM.
  * @param  [in]  addr            - The EEPROM starting address.
- * @param  [io]  wlen            - The length to write. A value of
- *                                 EEPROM_SIZE_NOT_SPECIFIED will use the
- *                                 size of the file as the length to write.
- *                                 The size written is returned in this
- *                                 parameter.
+ * @param  [io]  len             - The length to write.
  * @return       0 - Verify successful.
  * @return       1 - Verify failed.
  * @exit         EXIT_FAILURE - The program will terminate on file access error.
  */
 static uint
-eeprom_write(const char *filename, uint addr, uint *wlen)
+eeprom_write(const char *filename, uint addr, uint len)
 {
     FILE       *fp;
     uint8_t    *filebuf;
@@ -1449,23 +1465,7 @@ eeprom_write(const char *filename, uint addr, uint *wlen)
     char        cmd_output[64];
     int         rxcount;
     int         tcount = 0;
-    uint        len = *wlen;
-    struct stat statbuf;
 
-    *wlen = 0;
-    if (lstat(filename, &statbuf))
-        errx(EXIT_FAILURE, "Failed to stat %s", filename);
-
-    if (len == EEPROM_SIZE_NOT_SPECIFIED) {
-        len = EEPROM_SIZE_DEFAULT;
-        if (len > statbuf.st_size)
-            len = statbuf.st_size;
-    } else {
-        if (len > statbuf.st_size) {
-            errx(EXIT_FAILURE, "Length 0x%x is greater than %s size 0x%jx",
-                 len, filename, (intmax_t)statbuf.st_size);
-        }
-    }
     filebuf = malloc(len);
     if (filebuf == NULL)
         errx(EXIT_FAILURE, "Could not allocate %u byte buffer", len);
@@ -1510,7 +1510,6 @@ eeprom_write(const char *filename, uint addr, uint *wlen)
     }
 
     free(filebuf);
-    *wlen = len;
     return (0);
 }
 
@@ -1560,11 +1559,7 @@ show_fail_range(char *filebuf, char *eebuf, uint len, uint addr, uint filepos,
  *
  * @param  [in]  filename        - The file to compare EEPROM contents against.
  * @param  [in]  addr            - The EEPROM starting address.
- * @param  [in]  vlen            - The length to compare. A value of
- *                                 EEPROM_SIZE_NOT_SPECIFIED will use the
- *                                 size of the file as the length to compare.
- *                                 The size verified is returned in this
- *                                 parameter.
+ * @param  [in]  len             - The length to compare.
  * @param  [in]  miscompares_max - Specifies the maximum number of miscompares
  *                                 to verbosely report.
  * @return       0 - Verify successful.
@@ -1572,39 +1567,16 @@ show_fail_range(char *filebuf, char *eebuf, uint len, uint addr, uint filepos,
  * @exit         EXIT_FAILURE - The program will terminate on file access error.
  */
 static int
-eeprom_verify(const char *filename, uint addr, uint *vlen, uint miscompares_max)
+eeprom_verify(const char *filename, uint addr, uint len, uint miscompares_max)
 {
     FILE       *fp;
     char       *filebuf;
     char       *eebuf;
     char        cmd[64];
     int         rxcount;
-    uint        len = *vlen;
-    struct stat statbuf;
     int         pos;
     int         first_fail_pos = -1;
     uint        miscompares = 0;
-
-    *vlen = 0;
-
-    if (lstat(filename, &statbuf))
-        errx(EXIT_FAILURE, "Failed to stat %s", filename);
-
-    if (len == EEPROM_SIZE_NOT_SPECIFIED) {
-        len = EEPROM_SIZE_DEFAULT;
-        if (len > statbuf.st_size)
-            len = statbuf.st_size;
-    } else {
-        if (len > statbuf.st_size) {
-            errx(EXIT_FAILURE, "Length 0x%x is greater than %s size 0x%jx",
-                 len, filename, (intmax_t)statbuf.st_size);
-        }
-    }
-
-    if (len > statbuf.st_size) {
-        errx(EXIT_FAILURE, "Length 0x%x is greater than %s size %jx",
-             len, filename, (intmax_t)statbuf.st_size);
-    }
 
     filebuf = malloc(len);
     eebuf   = malloc(len + 4);
@@ -1664,7 +1636,6 @@ eeprom_verify(const char *filename, uint addr, uint *vlen, uint miscompares_max)
     }
     free(eebuf);
     free(filebuf);
-    *vlen = len;
     if (miscompares) {
         printf("%u miscompares\n", miscompares);
         return (1);
@@ -1901,6 +1872,7 @@ wait_for_tx_writer(void)
  * run_mode() handles command line options provided by the user.
  *
  * @param [in] mode       - Bitmask of specified modes (some may be combined).
+ * @param [in] bank       - Base address as multiple of length to read/write.
  * @param [in] baseaddr   - Base address, if specified.
  * @param [in] len        - Length, if specified.
  * @param [in] report_max - Maximum miscompares to show in verbose manner.
@@ -1911,8 +1883,8 @@ wait_for_tx_writer(void)
  * @return       1 - Failure.
  */
 int
-run_mode(uint mode, uint baseaddr, uint len, uint report_max, bool fill,
-         const char *filename)
+run_mode(uint mode, uint bank, uint baseaddr, uint len, uint report_max,
+         bool fill, const char *filename)
 {
     if (mode == MODE_UNKNOWN) {
         warnx("You must specify one of: -e -i -r -t or -w");
@@ -1927,58 +1899,66 @@ run_mode(uint mode, uint baseaddr, uint len, uint report_max, bool fill,
         eeprom_id();
         return (0);
     }
-    if ((filename == NULL) && (mode & (MODE_READ | MODE_VERIFY | MODE_WRITE))) {
+    if (((filename == NULL) || (filename[0] == '\0')) &&
+        (mode & (MODE_READ | MODE_VERIFY | MODE_WRITE))) {
         warnx("You must specify a filename with -r or -v or -w option\n");
+        usage(stderr);
         return (1);
     }
 
-    if (mode & MODE_READ) {
-        if ((filename == NULL) || (filename[0] == '\0')) {
-            warnx("You must specify a filename where eeprom contents "
-                  "will be written");
+    if (bank != BANK_NOT_SPECIFIED) {
+        if ((mode & MODE_READ) && (len == EEPROM_SIZE_NOT_SPECIFIED)) {
+            warnx("You must specify a length with -r and -b together\n");
             usage(stderr);
             return (1);
         }
-        if (baseaddr == ADDR_NOT_SPECIFIED)
-            baseaddr = 0x000000;  // Start of EEPROM
+        if ((mode & MODE_ERASE) && (len == EEPROM_SIZE_NOT_SPECIFIED)) {
+            warnx("You must specify a length with -e and -b together\n");
+            usage(stderr);
+            return (1);
+        }
+    }
 
-        eeprom_read(filename, baseaddr, len);
+    if (mode & MODE_READ) {
+        eeprom_read(filename, bank, baseaddr, len);
         return (0);
     }
     if (mode & MODE_ERASE) {
-        if (eeprom_erase(baseaddr, len))
+        if (eeprom_erase(bank, baseaddr, len))
             return (1);
-    }
-    if (mode & MODE_WRITE) {
-        if ((filename == NULL) || (filename[0] == '\0')) {
-            warnx("You must specify a filename to write to eeprom");
-            usage(stderr);
-            return (1);
-        }
-    }
-    if (mode & MODE_VERIFY) {
-        if ((filename == NULL) || (filename[0] == '\0')) {
-            warnx("You must specify a filename to verify against eeprom");
-            usage(stderr);
-            return (1);
-        }
     }
 
     if (mode & (MODE_WRITE | MODE_VERIFY)) {
+        struct stat statbuf;
         if (baseaddr == ADDR_NOT_SPECIFIED)
             baseaddr = 0x000000;  // Start of EEPROM
 
+        if (lstat(filename, &statbuf))
+            errx(EXIT_FAILURE, "Failed to stat %s", filename);
+
+        if (len == EEPROM_SIZE_NOT_SPECIFIED) {
+            len = EEPROM_SIZE_DEFAULT;
+            if (len > statbuf.st_size)
+                len = statbuf.st_size;
+        }
+        if (len > statbuf.st_size) {
+            errx(EXIT_FAILURE, "Length 0x%x is greater than %s size %jx",
+                 len, filename, (intmax_t)statbuf.st_size);
+        }
+        if (bank != BANK_NOT_SPECIFIED)
+            baseaddr += bank * len;
+
         do {
             if ((mode & MODE_WRITE) &&
-                (eeprom_write(filename, baseaddr, &len) != 0))
+                (eeprom_write(filename, baseaddr, len) != 0))
                 return (1);
 
             if ((mode & MODE_VERIFY) &&
-                (eeprom_verify(filename, baseaddr, &len, report_max) != 0))
+                (eeprom_verify(filename, baseaddr, len, report_max) != 0))
                 return (1);
 
             baseaddr += len;
-            if (baseaddr + len > EEPROM_SIZE_DEFAULT)
+            if (baseaddr >= EEPROM_SIZE_DEFAULT)
                 break;
         } while (fill);
     }
@@ -2003,6 +1983,7 @@ main(int argc, char * const *argv)
     int              ch;
     int              long_index = 0;
     bool             fill       = FALSE;
+    uint             bank       = BANK_NOT_SPECIFIED;
     uint             baseaddr   = ADDR_NOT_SPECIFIED;
     uint             len        = EEPROM_SIZE_NOT_SPECIFIED;
     uint             report_max = 64;
@@ -2045,6 +2026,12 @@ errx(EXIT_FAILURE, "how did we get here?");
                     errx(EXIT_FAILURE, "Invalid address \"%s\"", optarg);
                 }
                 break;
+            case 'b':
+                if ((sscanf(optarg, "%i%n", (int *)&bank, &pos) != 1) ||
+                    (optarg[pos] != '\0') || (pos == 0)) {
+                    errx(EXIT_FAILURE, "Invalid bank \"%s\"", optarg);
+                }
+                break;
             case 'D':
                 ic_delay = atou(optarg);
                 break;
@@ -2061,7 +2048,8 @@ errx(EXIT_FAILURE, "how did we get here?");
                 break;
             case 'i':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
+                    errx(EXIT_FAILURE,
+                         "-%c may not be specified with any other mode", ch);
                 mode = MODE_ID;
                 break;
             case 'l':
@@ -2072,13 +2060,15 @@ errx(EXIT_FAILURE, "how did we get here?");
                 break;
             case 'r':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
+                    errx(EXIT_FAILURE,
+                         "-%c may not be specified with any other mode", ch);
                 mode = MODE_READ;
 //              filename = optarg;
                 break;
             case 't':
                 if (mode != MODE_UNKNOWN)
-                    errx(EXIT_FAILURE, "-%c may not be specified with any other mode", ch);
+                    errx(EXIT_FAILURE,
+                         "-%c may not be specified with any other mode", ch);
                 mode = MODE_TERM;
                 terminal_mode = TRUE;
                 break;
@@ -2138,7 +2128,7 @@ errx(EXIT_FAILURE, "how did we get here?");
         do_exit(EXIT_FAILURE);
 
     create_threads();
-    rc = run_mode(mode, baseaddr, len, report_max, fill, filename);
+    rc = run_mode(mode, bank, baseaddr, len, report_max, fill, filename);
     wait_for_tx_writer();
 
     exit(rc);
