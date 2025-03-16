@@ -6,7 +6,7 @@
  *
  * ---------------------------------------------------------------------
  *
- * UNIX side to interact with MX29F1615 programmer.
+ * UNIX side to interact with MX29F1615 programmer and Amiga Kicksmash
  */
 
 #include <stdio.h>
@@ -49,6 +49,7 @@ static const struct option long_opts[] = {
     { "help",     no_argument,       NULL, 'h' },
     { "len",      required_argument, NULL, 'l' },
     { "read",     no_argument,       NULL, 'r' },
+    { "swap",     required_argument, NULL, 's' },
     { "term",     no_argument,       NULL, 't' },
     { "verify",   no_argument,       NULL, 'v' },
     { "write",    no_argument,       NULL, 'w' },
@@ -69,6 +70,7 @@ static char short_opts[] = {
     'i',         // --identify
     'l', ':',    // --len <num>
     'r',         // --read <filename>
+    's', ':',    // --swap <mode>
     't',         // --term
     'v',         // --verify <filename>
     'w',         // --write <filename>
@@ -78,7 +80,7 @@ static char short_opts[] = {
 
 /* Program help text */
 static const char usage_text[] =
-"term <opts> <dev>\n"
+"mxprog <opts> <dev>\n"
 "    -A --all               show all verify miscompares\n"
 "    -a --addr <addr>       starting EEPROM address\n"
 "    -b --bank <num>        starting EEPROM address as multiple of file size\n"
@@ -90,10 +92,12 @@ static const char usage_text[] =
 "    -i --identify          identify installed EEPROM\n"
 "    -l --len <num>         length in bytes\n"
 "    -r --read <filename>   read EEPROM and write to file\n"
+"    -s --swap <mode>       byte swap mode (2301, 3210, 1032, noswap=0123)\n"
 "    -v --verify <filename> verify file matches EEPROM contents\n"
 "    -w --write <filename>  read file and write to EEPROM\n"
 "    -t --term              just act in terminal mode (CLI)\n"
 "    -y --yes               answer all prompts with 'yes'\n"
+"    TERM_DEBUG=`tty`       env variable for communication debug output\n"
 "\n"
 "Example (including specific TTY to open):\n"
 #ifdef OSX
@@ -133,7 +137,15 @@ static const char usage_text[] =
 #define EXIT_USAGE 2
 #endif
 
+#define SWAPMODE_A500  0xA500   // Amiga 16-bit ROM format
+#define SWAPMODE_A3000 0xA3000  // Amiga 32-bit ROM format
+
+#define SWAP_TO_ROM    0  // Bytes originated in a file (to be written in ROM)
+#define SWAP_FROM_ROM  1  // Bytes originated in ROM (to be written to a file)
+
 typedef unsigned int uint;
+
+static void discard_input(int timeout);
 
 typedef enum {
     RC_SUCCESS = 0,
@@ -170,7 +182,7 @@ static char             device_name[PATH_MAX];
 static struct termios   saved_term;  // good terminal settings
 static bool             terminal_mode     = FALSE;
 static bool             force_yes         = FALSE;
-
+static uint             swapmode          = 0123;  // no swap
 
 /*
  * STM32 CRC polynomial (also used in ethernet, SATA, MPEG-2, and ZMODEM)
@@ -629,8 +641,9 @@ th_serial_reader(void *arg)
     if ((log_file = getenv("TERM_DEBUG")) != NULL) {
         /*
          * Examples:
-         *     TERM_DEBUG=/dev/pts/4 term /dev/ttyUSB0
-         *     TERM_DEBUG=/tmp/term_debug term /dev/ttyUSB0
+         *     export TERM_DEBUG
+         *     TERM_DEBUG=/dev/pts/4 mxprog -t
+         *     TERM_DEBUG=/tmp/term_debug mxprog -t -d /dev/ttyACM0
          */
         log_fp = fopen(log_file, "w");
         if (log_fp == NULL)
@@ -939,6 +952,7 @@ check_rc(uint pos)
     }
     if (rc != 0) {
         printf("Remote sent error %d\n", rc);
+        discard_input(250);
         return (1);
     }
     return (0);
@@ -1127,8 +1141,9 @@ send_ll_crc(uint8_t *data, size_t len)
 
         if (cap_count >= ARRAY_SIZE(cap_pos)) {
             cap_count--;
-            if (check_rc(cap_pos[cap_cons]))
+            if (check_rc(cap_pos[cap_cons])) {
                 return (RC_FAILURE);
+            }
             if (++cap_cons >= ARRAY_SIZE(cap_pos))
                 cap_cons = 0;
         }
@@ -1252,6 +1267,9 @@ recv_output(char *buf, size_t buflen, int *rxcount, int timeout)
 {
     *rxcount = receive_ll(buf, buflen, timeout, false);
 
+    if (*rxcount < buflen)
+        buf[*rxcount] = '\0';
+
     if ((*rxcount >= 5) && (strncmp(buf + *rxcount - 5, "CMD> ", 5) == 0))
         *rxcount -= 5;  // Discard trailing CMD prompt
 
@@ -1289,6 +1307,124 @@ ask_again:
 }
 
 /*
+ * execute_swapmode() swaps bytes in the specified buffer according to the
+ *                    currently active swap mode.
+ *
+ * @param  [io]  buf     - Buffer to modify.
+ * @param  [in]  len     - Length of data in the buffer.
+ * @gloabl [in]  dir     - Image swap direction (SWAP_TO_ROM or SWAP_FROM_ROM)
+ * @return       None.
+ */
+static void
+execute_swapmode(uint8_t *buf, uint len, uint dir)
+{
+    uint    pos;
+    uint8_t temp;
+    static const uint8_t str_f94e1411[] = { 0xf9, 0x4e, 0x14, 0x11 };
+    static const uint8_t str_11144ef9[] = { 0x11, 0x14, 0x4e, 0xf9 };
+    static const uint8_t str_1411f94e[] = { 0x14, 0x11, 0xf9, 0x4e };
+    static const uint8_t str_4ef91114[] = { 0x4e, 0xf9, 0x11, 0x14 };
+
+    switch (swapmode) {
+        case 0:
+        case 0123:
+            return;  // Normal (no swap)
+        swap_1032:
+        case 1032:
+            /* Swap adjacent bytes in 16-bit words */
+            for (pos = 0; pos < len - 1; pos += 2) {
+                temp         = buf[pos + 0];
+                buf[pos + 0] = buf[pos + 1];
+                buf[pos + 1] = temp;
+            }
+            return;
+        swap_2301:
+        case 2301:
+            /* Swap adjacent (16-bit) words */
+            for (pos = 0; pos < len - 3; pos += 4) {
+                temp         = buf[pos + 0];
+                buf[pos + 0] = buf[pos + 2];
+                buf[pos + 2] = temp;
+                temp         = buf[pos + 1];
+                buf[pos + 1] = buf[pos + 3];
+                buf[pos + 3] = temp;
+            }
+            return;
+        swap_3210:
+        case 3210:
+            /* Swap bytes in 32-bit longs */
+            for (pos = 0; pos < len - 3; pos += 4) {
+                temp         = buf[pos + 0];
+                buf[pos + 0] = buf[pos + 3];
+                buf[pos + 3] = temp;
+                temp         = buf[pos + 1];
+                buf[pos + 1] = buf[pos + 2];
+                buf[pos + 2] = temp;
+            }
+            return;
+        case SWAPMODE_A500:
+            if (dir == SWAP_TO_ROM) {
+                /* Need bytes in order: 14 11 f9 4e */
+                if (memcmp(buf, str_1411f94e, 4) == 0)
+                    return;  // Already in desired order
+                if (memcmp(buf, str_11144ef9, 4) == 0) {
+                    printf("Swap mode 2301\n");
+                    goto swap_2301;  // Swap adjacent 16-bit words
+                }
+            }
+            if (dir == SWAP_FROM_ROM) {
+                /* Need bytes in order: 11 14 4e f9 */
+                if (memcmp(buf, str_11144ef9, 4) == 0)
+                    return;  // Already in desired order
+                if (memcmp(buf, str_1411f94e, 4) == 0) {
+                    printf("Swap mode 1032\n");
+                    goto swap_1032;  // Swap odd/even bytes
+                }
+            }
+            goto unrecognized;
+        case SWAPMODE_A3000:
+            if (dir == SWAP_TO_ROM) {
+                /* Need bytes in order: f9 4e 14 11 */
+                if (memcmp(buf, str_f94e1411, 4) == 0)
+                    return;  // Already in desired order
+                if (memcmp(buf, str_11144ef9, 4) == 0) {
+                    printf("Swap mode 3210\n");
+                    goto swap_3210;  // Swap bytes in 32-bit longs
+                }
+                if (memcmp(buf, str_1411f94e, 4) == 0) {
+                    printf("Swap mode 2301\n");
+                    goto swap_2301;  // Swap adjacent 16-bit words
+                }
+                if (memcmp(buf, str_4ef91114, 4) == 0) {
+                    printf("Swap mode 1032\n");
+                    goto swap_1032;  // Swap odd/even bytes
+                }
+            }
+            if (dir == SWAP_FROM_ROM) {
+                /* Need bytes in order: 11 14 4e f9 */
+                if (memcmp(buf, str_11144ef9, 4) == 0)
+                    return;  // Already in desired order
+                if (memcmp(buf, str_f94e1411, 4) == 0) {
+                    printf("Swap mode 3210\n");
+                    goto swap_3210;  // Swap bytes in 32-bit longs
+                }
+                if (memcmp(buf, str_4ef91114, 4) == 0) {
+                    printf("Swap mode 2301\n");
+                    goto swap_2301;  // Swap adjacent 16-bit words
+                }
+                if (memcmp(buf, str_1411f94e, 4) == 0) {
+                    printf("Swap mode 1032\n");
+                    goto swap_1032;  // Swap odd/even bytes
+                }
+            }
+unrecognized:
+            errx(EXIT_FAILURE,
+                 "Unrecognized Amiga ROM format: %02x %02x %02x %02x\n",
+                 buf[0], buf[1], buf[2], buf[3]);
+    }
+}
+
+/*
  * eeprom_erase() sends a command to the programmer to erase a sector,
  *                a range of sectors, or the entire EEPROM.
  *
@@ -1318,6 +1454,22 @@ eeprom_erase(uint bank, uint addr, uint len)
         addr += bank * len;
     }
 
+    snprintf(cmd, sizeof (cmd) - 1, "prom id");
+    if (send_cmd(cmd))
+        return (1);  // "timeout" was reported in this case
+    if (recv_output(cmd_output, sizeof (cmd_output), &rxcount, 80))
+        return (1); // "timeout" was reported in this case
+    if (rxcount == 0) {
+        printf("Device ID timeout\n");
+        return (1);
+    }
+    if (strcasestr(cmd_output, "Unknown") != NULL) {
+        if (rxcount < sizeof (cmd_output))
+            cmd_output[rxcount] = '\0';  // Eliminate "CMD>" prompt at end
+        printf("Device ID failed: %s\n", cmd_output);
+        return (1);
+    }
+
     if (addr == ADDR_NOT_SPECIFIED) {
         /* Chip erase */
         sprintf(prompt, "Erase entire EEPROM");
@@ -1343,14 +1495,18 @@ eeprom_erase(uint bank, uint addr, uint len)
         if (recv_output(cmd_output, sizeof (cmd_output), &rxcount, 100))
             return (1); // "timeout" was reported in this case
         if (rxcount == 0) {
-            if (no_data++ == 20) {
+            if (no_data++ == 40) {
                 printf("Receive timeout\n");
-                break;  // No output for 2 seconds
+                return (1);  // No output for 4 seconds
             }
         } else {
             no_data = 0;
             printf("%.*s", rxcount, cmd_output);
             fflush(stdout);
+            if ((strstr(cmd_output, "FAIL") != NULL) ||
+                (strstr(cmd_output, "Invalid>") != NULL)) {
+                return (1);
+            }
             if (strstr(cmd_output, "CMD>") != NULL) {
                 /* Normal end */
                 break;
@@ -1370,11 +1526,11 @@ eeprom_erase(uint bank, uint addr, uint len)
 static void
 eeprom_id(void)
 {
-    char cmd_output[64];
+    char cmd_output[100];
     int  rxcount;
     if (send_cmd("prom id"))
         return; // "timeout" was reported in this case
-    if (recv_output(cmd_output, sizeof (cmd_output), &rxcount, 50))
+    if (recv_output(cmd_output, sizeof (cmd_output), &rxcount, 80))
         return; // "timeout" was reported in this case
     if (rxcount == 0)
         printf("Receive timeout\n");
@@ -1435,6 +1591,7 @@ eeprom_read(const char *filename, uint bank, uint addr, uint len)
         FILE *fp = fopen(filename, "w");
         if (fp == NULL)
             err(EXIT_FAILURE, "Failed to open %s", filename);
+        execute_swapmode((uint8_t *)eebuf, rxcount, SWAP_FROM_ROM);
         written = fwrite(eebuf, rxcount, 1, fp);
         if (written != 1)
             err(EXIT_FAILURE, "Failed to write %s", filename);
@@ -1476,6 +1633,7 @@ eeprom_write(const char *filename, uint addr, uint len)
     if (fread(filebuf, len, 1, fp) != 1)
         errx(EXIT_FAILURE, "Failed to read %u bytes from %s", len, filename);
     fclose(fp);
+    execute_swapmode(filebuf, len, SWAP_TO_ROM);
 
     printf("Writing 0x%06x bytes to EEPROM starting at address 0x%x\n",
            len, addr);
@@ -1589,6 +1747,7 @@ eeprom_verify(const char *filename, uint addr, uint len, uint miscompares_max)
     if (fread(filebuf, len, 1, fp) != 1)
         errx(EXIT_FAILURE, "Failed to read %u bytes from %s", len, filename);
     fclose(fp);
+    execute_swapmode((uint8_t *)filebuf, len, SWAP_TO_ROM);
 
     snprintf(cmd, sizeof (cmd) - 1, "prom read %x %x", addr, len);
     cmd[sizeof (cmd) - 1] = '\0';
@@ -1619,6 +1778,11 @@ eeprom_verify(const char *filename, uint addr, uint len, uint miscompares_max)
                 first_fail_pos = -1;
             }
         } else {
+            if ((pos < len - 1) &&
+                (eebuf[pos + 1] != filebuf[pos + 1])) {
+                /* Consider single byte matches part of failure range */
+                continue;
+            }
             if (first_fail_pos != -1) {
                 if (miscompares < miscompares_max) {
                     /* Report previous range */
@@ -2014,6 +2178,8 @@ errx(EXIT_FAILURE, "how did we get here?");
                     goto reswitch;
                 }
                 warnx("The -%c flag requires an argument", optopt);
+                if (optopt == 's')
+                    warnx("Valid options are 1032, 2301, or 3210\n");
                 usage(stderr);
                 exit(EXIT_FAILURE);
                 break;
@@ -2064,6 +2230,31 @@ errx(EXIT_FAILURE, "how did we get here?");
                          "-%c may not be specified with any other mode", ch);
                 mode = MODE_READ;
 //              filename = optarg;
+                break;
+            case 's':
+                if ((strcasecmp(optarg, "a3000") == 0) ||
+                    (strcasecmp(optarg, "a4000") == 0) ||
+                    (strcasecmp(optarg, "a3000t") == 0) ||
+                    (strcasecmp(optarg, "a4000t") == 0) ||
+                    (strcasecmp(optarg, "a1200") == 0)) {
+                    swapmode = SWAPMODE_A3000;
+                    break;
+                }
+                if ((strcasecmp(optarg, "a500") == 0) ||
+                    (strcasecmp(optarg, "a600") == 0) ||
+                    (strcasecmp(optarg, "a1000") == 0) ||
+                    (strcasecmp(optarg, "a2000") == 0) ||
+                    (strcasecmp(optarg, "cdtv") == 0)) {
+                    swapmode = SWAPMODE_A500;
+                    break;
+                }
+                if ((sscanf(optarg, "%i%n", (int *)&swapmode, &pos) != 1) ||
+                    (optarg[pos] != '\0') || (pos == 0) ||
+                    ((swapmode != 0123) && (swapmode != 1032) &&
+                     (swapmode != 2301) && (swapmode != 3210))) {
+                    errx(EXIT_FAILURE, "Invalid swap mode \"%s\", use "
+                                       "1032, 2301, or 3210", optarg);
+                }
                 break;
             case 't':
                 if (mode != MODE_UNKNOWN)

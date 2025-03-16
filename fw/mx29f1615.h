@@ -26,6 +26,7 @@ int      mx_vcc_is_on(void);
 int      mx_vpp_is_on(void);
 void     mx_poll(void);
 int      mx_verify(int verbose);
+const char *mx_id_string(uint32_t id);
 
 #define MX_ERASE_MODE_CHIP   0
 #define MX_ERASE_MODE_SECTOR 1

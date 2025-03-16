@@ -51,8 +51,16 @@ reset_everything(void)
     RCC_APB2RSTR = 0x00000000;  // Release APB2 reset
 }
 
+void
+main_poll(void)
+{
+    usb_poll();
+    mx_poll();
+    adc_poll(true, false);
+}
 
-int main(void)
+int
+main(void)
 {
     reset_check();
     reset_everything();
@@ -79,9 +87,7 @@ int main(void)
     led_busy(0);
 
     while (1) {
-        usb_poll();
-        mx_poll();
-        adc_poll(true, false);
+        main_poll();
         cmdline();
     }
 

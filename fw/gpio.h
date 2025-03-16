@@ -127,12 +127,15 @@ typedef uint32_t GPIO_TypeDefP;
 #define GPIO_SETMODE_OUTPUT_AF_ODRAIN_50 0xf  // 50 MHz, Alt func. Open-Drain
 #endif
 
-void     gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value);
-void     gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value);
-void     gpio_init(void);
-void     gpio_show(int whichport, int whichpin);
-void     gpio_assign(int whichport, int whichpin, const char *assign);
+#define NUM_GPIO_BANKS 6
 
+void gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value);
+void gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value);
+void gpio_init(void);
+void gpio_show(int whichport, int pins);
+void gpio_assign(int whichport, int pins, const char *assign);
+uint gpio_name_match(const char **name, uint16_t pins[NUM_GPIO_BANKS]);
+char *gpio_to_str(uint32_t port, uint16_t pin);
 
 #endif /* _GPIO_H */
 

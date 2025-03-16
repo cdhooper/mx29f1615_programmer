@@ -13,13 +13,18 @@
 #ifdef EMBEDDED_CMD
 #include "main.h"
 #include "pcmds.h"
+#ifdef HAVE_SPACE_PROM
 #include "prom_access.h"
+#endif
+#include "stm32flash.h"
 #include <stdbool.h>
 #include "timer.h"
 #include "uart.h"
+#include "printf.h"
+#else
+#include <stdio.h>
 #endif
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
@@ -143,7 +148,13 @@ const char cmd_time_help[] =
 void
 msleep(uint msec)
 {
-    Delay(msec * 1000 / TICKS_PER_SECOND);
+    while (msec > 1000) {
+        Delay(TICKS_PER_SECOND);
+        msec -= 1000;
+        if (is_user_abort())
+            return (1);
+    }
+    Delay(msec * TICKS_PER_SECOND / 1000);
 }
 
 void
@@ -173,6 +184,7 @@ usleep(useconds_t us)
 #define SPACE_MEMORY 1
 #define SPACE_FILE   2
 #define SPACE_PROM   3
+#define SPACE_FLASH  4
 
 static rc_t
 data_read(uint64_t space, uint64_t addr, uint width, void *buf)
@@ -183,6 +195,10 @@ data_read(uint64_t space, uint64_t addr, uint width, void *buf)
 #ifdef HAVE_SPACE_PROM
         case SPACE_PROM:
             return (prom_read((uint32_t)addr, width, buf));
+#endif
+#ifdef HAVE_SPACE_FLASH
+        case SPACE_FLASH:
+            return (stm32flash_read((uintptr_t)addr, width, buf));
 #endif
 #ifdef HAVE_SPACE_FILE
         case SPACE_FILE:
@@ -203,6 +219,11 @@ data_write(uint64_t space, uint64_t addr, uint width, void *buf)
 #ifdef HAVE_SPACE_PROM
         case SPACE_PROM:
             return (prom_write((uint32_t)addr, width, buf));
+#endif
+#ifdef HAVE_SPACE_FLASH
+        case SPACE_FLASH:
+            return (stm32flash_write((uintptr_t)addr, width, buf,
+                                     STM32FLASH_FLAG_AUTOERASE));
 #endif
 #ifdef HAVE_SPACE_FILE
         case SPACE_FILE:
@@ -232,6 +253,11 @@ print_addr(uint64_t space, uint64_t addr)
 #ifdef HAVE_SPACE_PROM
         case SPACE_PROM:
             printf("%06x", (int)addr);
+            break;
+#endif
+#ifdef HAVE_SPACE_FLASH
+        case SPACE_FLASH:
+            printf("%05x", (int)addr);
             break;
 #endif
 #ifdef HAVE_SPACE_FILE
@@ -287,7 +313,7 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
     *space = SPACE_MEMORY;  /* Default */
 
 #ifdef HAVE_SPACE_PROM
-    if (strncmp(argp, "prom", 5) == 0) {
+    if (strcmp(argp, "prom") == 0) {
         *space = SPACE_PROM;
         if (strchr(argp, ':') != NULL) {
             argp += 6;
@@ -302,8 +328,24 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
         }
     }
 #endif
+#ifdef HAVE_SPACE_FLASH
+    if (strcmp(argp, "flash") == 0) {
+        *space = SPACE_FLASH;
+        if (strchr(argp, ':') != NULL) {
+            argp += 6;
+        } else {
+            (*arg)++;
+            (*argc)--;
+            if (*argc < 1) {
+                printf("<addr> argument required\n");
+                return (RC_USER_HELP);
+            }
+            argp = **arg;
+        }
+    }
+#endif
 #ifdef HAVE_SPACE_FILE
-    if (strncmp(argp, "file", 4) == 0) {
+    if (strcmp(argp, "file") == 0) {
         int len;
         *space = SPACE_FILE;
         if (strchr(argp, ':') != NULL) {
@@ -982,19 +1024,21 @@ remove_quotes(char *line)
  *      need for this function.
  */
 static char *
-loop_index_substitute(char *src, int value, int count)
+loop_index_substitute(char *src, int value, int count, int loop_level)
 {
     char   valbuf[10];
     int    vallen  = sprintf(valbuf, "%x", value);
     size_t newsize = strlen(src) + vallen * count + 1;
     char  *nstr    = malloc(newsize);
     char  *dptr    = nstr;
+    char   varstr[4] = "$a";
 
+    varstr[1] += loop_level;  // $a, $b, $c, etc.
     if (nstr == NULL)
         return (strdup(src));
 
     while (*src != '\0') {
-        char *ptr = strstr(src, "$a");
+        char *ptr = strstr(src, varstr);
         int   len;
         if (ptr == NULL) {
             /* Nothing more */
@@ -1015,11 +1059,14 @@ loop_index_substitute(char *src, int value, int count)
 }
 
 static int
-loop_index_count(char *src)
+loop_index_count(char *src, int loop_level)
 {
     int   count = 0;
+    char  varstr[4] = "$a";
+    varstr[1] += loop_level;  // $a, $b, $c, etc.
+
     while (*src != '\0') {
-        src = strstr(src, "$a");
+        src = strstr(src, varstr);
         if (src == NULL)
             break;
         count++;
@@ -1040,6 +1087,7 @@ cmd_loop(int argc, char * const *argv)
     char   *cmd;
     char   *cmdline;
     rc_t    rc = RC_SUCCESS;
+    static uint loop_level = 0;  // for nested loops
 
     if (argc <= 2) {
         printf("error: loop command requires count and command to execute\n");
@@ -1051,7 +1099,7 @@ cmd_loop(int argc, char * const *argv)
     if (cmdline == NULL)
         return (RC_FAILURE);
     cmd = remove_quotes(cmdline);
-    index_uses = loop_index_count(cmd);
+    index_uses = loop_index_count(cmd, loop_level);
     if (index_uses == 0)
         nargc = make_arglist(cmd, nargv);
 
@@ -1059,11 +1107,13 @@ cmd_loop(int argc, char * const *argv)
         if (index_uses > 0) {
             if (cur != 0)
                 free_arglist(nargc, nargv);
-            ptr = loop_index_substitute(cmd, cur, index_uses);
+            ptr = loop_index_substitute(cmd, cur, index_uses, loop_level);
             nargc = make_arglist(ptr, nargv);
             free(ptr);
         }
+        loop_level++;
         rc = cmd_exec_argv(nargc, nargv);
+        loop_level--;
         if (rc != RC_SUCCESS) {
             if (rc == RC_USER_HELP)
                 rc = RC_FAILURE;
@@ -1122,6 +1172,7 @@ cmd_delay(int argc, char * const *argv)
     int  pos   = 0;
     int  count;
     char *ptr;
+    char restore = '\0';
 
     if (argc <= 1) {
         printf("This command requires an argument: <time>\n");
@@ -1133,6 +1184,7 @@ cmd_delay(int argc, char * const *argv)
     }
     for (ptr = argv[1]; *ptr != '\0'; ptr++) {
         if (convert_name_to_time_units(ptr, &units) == RC_SUCCESS) {
+            restore = *ptr;
             *ptr = '\0';
             break;
         }
@@ -1197,6 +1249,8 @@ cmd_delay(int argc, char * const *argv)
             usleep(value / 1000);
             break;
     }
+    if (ptr != NULL)
+        *ptr = restore;
     return (RC_SUCCESS);
 }
 
@@ -1217,8 +1271,8 @@ cmd_patt(int argc, char * const *argv)
     const char *cmd;
     char       *ptr;
     static enum {
-        PATT_ZERO,
         PATT_ONE,
+        PATT_ZERO,
         PATT_BLIP,
         PATT_RAND,
         PATT_STROBE,
@@ -1396,12 +1450,12 @@ cmd_test(int argc, char * const *argv)
     uint32_t    srand_seed;
     const char *cmd;
     static enum {
+        TEST_VALUE,
         TEST_ZERO,
         TEST_ONE,
         TEST_RAND,
         TEST_WALK0,
         TEST_WALK1,
-        TEST_VALUE,
     } testmode = TEST_VALUE;
     static enum {
         RWMODE_READ,

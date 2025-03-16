@@ -9,6 +9,7 @@
  * EEPROM high level access code for MX29F1615 programmer.
  */
 
+#include <string.h>
 #include "main.h"
 #include "cmdline.h"
 #include "prom_access.h"
@@ -95,7 +96,16 @@ prom_write(uint32_t addr, uint width, void *bufp)
 rc_t
 prom_erase(uint mode, uint32_t addr, uint32_t len)
 {
+    uint32_t id;
+    const char *id_str;
+
     mx_enable();
+    id = mx_id();
+    id_str = mx_id_string(id);
+    if (strcmp(id_str, "Unknown") == 0) {
+        printf("Chip ID failed: %08lx\n", id);
+        return (1);
+    }
     return (mx_erase(mode, addr >> 1, len >> 1, 1));
 }
 
@@ -109,8 +119,10 @@ prom_cmd(uint32_t addr, uint16_t cmd)
 void
 prom_id(void)
 {
+    uint32_t id;
     mx_enable();
-    printf("%08lx\n", mx_id());
+    id = mx_id();
+    printf("%08lx %s\n", id, mx_id_string(id));
 }
 
 void
@@ -129,10 +141,10 @@ prom_status_clear(void)
 }
 
 static int
-getchar_wait(uint pos)
+getchar_wait(uint timeout_msec)
 {
     int      ch;
-    uint64_t timeout = timer_tick_plus_msec(200);
+    uint64_t timeout = timer_tick_plus_msec(timeout_msec);
 
     while ((ch = getchar()) == -1)
         if (timer_tick_has_elapsed(timeout))
@@ -149,7 +161,7 @@ check_crc(uint32_t crc, uint spos, uint epos, bool send_rc)
     uint32_t compcrc;
 
     for (pos = 0; pos < sizeof (compcrc); pos++) {
-        ch = getchar_wait(200);
+        ch = getchar_wait(1000);
         if (ch == -1) {
             printf("Receive timeout waiting for CRC %08lx at 0x%x\n",
                    crc, epos);
@@ -168,7 +180,7 @@ check_crc(uint32_t crc, uint spos, uint epos, bool send_rc)
 static int
 check_rc(uint pos)
 {
-    int ch = getchar_wait(200);
+    int ch = getchar_wait(1000);
     if (ch == -1) {
         printf("Receive timeout waiting for rc at 0x%x\n", pos);
         return (RC_TIMEOUT);

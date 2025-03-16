@@ -6,7 +6,8 @@ BOARD_REV ?= 5
 
 SRCS   := main.c clock.c gpio.c printf.c timer.c uart.c usb.c version.c \
 	  led.c irq.c mem_access.c readline.c cmdline.c cmds.c pcmds.c \
-	  prom_access.c mx29f1615.c utils.c crc32.c adc.c button.c
+	  prom_access.c mx29f1615.c utils.c crc32.c adc.c button.c scanf.c \
+	  stm32flash.c
 
 OBJDIR := objs
 OBJS   := $(SRCS:%.c=$(OBJDIR)/%.o)
@@ -21,6 +22,19 @@ BINARY = $(OBJDIR)/fw
 # Linker script for our MCU
 LDSCRIPT = stm32f1.ld  # Also works for STM32F4
 
+QUIET  := @
+VERBOSE :=
+
+# If verbose is specified with no other targets, then build everything
+ifeq ($(MAKECMDGOALS),verbose)
+verbose: all
+endif
+ifeq (,$(filter verbose timed, $(MAKECMDGOALS)))
+QUIET   := @
+else
+QUIET   :=
+VERBOSE := -v
+endif
 
 ifeq ($(BOARD_REV), 1)
 $(info Building for STM32F4)
@@ -67,7 +81,7 @@ OBJCOPY		:= $(PREFIX)-objcopy
 OBJDUMP		:= $(PREFIX)-objdump
 GDB		:= $(PREFIX)-gdb
 STFLASH		= $(shell which st-flash)
-OPT		:= -Os
+OPT		:= -O2
 DEBUG		:= -ggdb3
 CSTD		?= -std=gnu99
 
@@ -79,6 +93,7 @@ TGT_CFLAGS	+= -Wredundant-decls -Wmissing-prototypes -Wstrict-prototypes
 TGT_CFLAGS	+= -fno-common -ffunction-sections -fdata-sections
 TGT_CFLAGS	+= -ffreestanding
 TGT_CFLAGS	+= -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
+TGT_CFLAGS	+= -Wa,-a > $(@:.o=.lst)
 
 # C++ flags
 TGT_CXXFLAGS	+= $(OPT) $(CXXSTD) $(DEBUG)
@@ -103,6 +118,9 @@ ifeq ($(V),99)
 TGT_LDFLAGS		+= -Wl,--print-gc-sections
 endif
 
+#TGT_CFLAGS	+= -g
+#TGT_LDFLAGS	+= -g
+
 # Used libraries
 DEFS		+= -I$(OPENCM3_DIR)/include
 LDFLAGS		+= -L$(OPENCM3_DIR)/lib
@@ -124,34 +142,42 @@ flashbmp: $(BINARY).flashbmp
 GENERATED_BINARIES=$(BINARY).elf $(BINARY).bin $(BINARY).hex $(BINARY).srec $(BINARY).list $(BINARY).map
 
 $(OBJDIR)/%.bin: $(OBJDIR)/%.elf
-	$(OBJCOPY) -Obinary $< $@
+	@echo Building $@
+	$(QUIET)$(OBJCOPY) -Obinary $< $@
 
 $(OBJDIR)/%.hex: $(OBJDIR)/%.elf
-	$(OBJCOPY) -Oihex $< $@
+	@echo Building $@
+	$(QUIET)$(OBJCOPY) -Oihex $< $@
 
 $(OBJDIR)/%.srec: $(OBJDIR)/%.elf
-	$(OBJCOPY) -Osrec $< $@
+	@echo Building $@
+	$(QUIET)$(OBJCOPY) -Osrec $< $@
 
 $(OBJDIR)/%.list: $(OBJDIR)/%.elf
-	$(OBJDUMP) -S $< > $@
+	@echo Building $@
+	$(QUIET)$(OBJDUMP) -S $< > $@
 
 $(OBJDIR)/%.map: $(OBJDIR)/%.elf
 
 $(OBJDIR)/%.elf: $(OBJS) $(LDSCRIPT) | $(OPENCM3_LIB)
-	$(LD) $(TGT_LDFLAGS) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@
+	@echo Building $@
+	$(QUIET)$(LD) $(TGT_LDFLAGS) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@
 
 $(OBJDIR)/%.o: %.c
-	$(CC) $(TGT_CFLAGS) $(CFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).c
+	@echo Building $@
+	$(QUIET)$(CC) $(TGT_CFLAGS) $(CFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).c
 
 $(OBJDIR)/%.o: %.cxx
-	$(CXX) $(TGT_CXXFLAGS) $(CXXFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).cxx
+	@echo Building $@
+	$(QUIET)$(CXX) $(TGT_CXXFLAGS) $(CXXFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).cxx
 
 $(OBJDIR)/%.o: %.cpp
-	$(CXX) $(TGT_CXXFLAGS) $(CXXFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).cpp
+	@echo Building $@
+	$(QUIET)$(CXX) $(TGT_CXXFLAGS) $(CXXFLAGS) $(TGT_CPPFLAGS) $(CPPFLAGS) -o $@ -c $(*).cpp
 
 $(OBJDIR)/%.size: $(OBJDIR)/%.elf
 	@echo "Output code size:"
-	@$(SIZE) -A -d $< | egrep 'text|data|bss' | awk ' \
+	@$(SIZE) -A -d $< | grep -Ee 'text|data|bss' | awk ' \
     function human(x) { \
         if (x<1000) {return x} else {x/=1024} \
         s="kMGTEPZY"; \
@@ -174,9 +200,6 @@ $(OPENCM3_DIR) $(OPENCM3_HEADER):
 	make -C $(OPENCM3_DIR) -j8
 
 $(OPENCM3_LIB): | $(OPENCM3_DIR)
-
-#	@echo Building $@
-#	make -C $(OPENCM3_DIR) -j8
 
 %.flashbmp: %.elf
 	$(GDB) --batch \
@@ -204,32 +227,47 @@ just-dfu: $(UDEV_FILE_PATHS)
 dfu-unprotect: $(UDEV_FILE_PATHS)
 	$(DFU_UTIL) -s 0:force:unprotect -a 0 --device 0483:df11 --alt 0 --download $(BINARY).bin
 
+dfu-clobber: $(UDEV_FILE_PATHS)
+	$(DFU_UTIL) -s 0:force:unprotect --alt 1 --download flash_clobber.bin -Z 0x10 --dfuse-address 0x1ffff800:leave
+
+#dfu-clobber: $(UDEV_FILE_PATHS)
+#	$(DFU_UTIL) -s 0:force:unprotect --alt 1 --download flash_clobber.bin -Z 0xd --dfuse-address 0x1ffff800:leave
+
 # Write STM32 flash using ST-Link
-just-flash: just-erase $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --reset write $(BINARY).bin 0x08000000
+just-flash: $(ST_TOOLS_PATH)/st-flash | $(BINARY).bin $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write $(BINARY).bin 0x08000000
 
 # Erase STM32 flash using ST-Link
 just-erase: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --flash=0x100000 erase
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --flash=0x100000 erase 0x08000000 0x3c000
 
 # Protect/unprotect/clobber flash by writing the option byte area
 # The following can also be done by the STM32CubeProgrammer.
 # F105 unlocked  1ffff800: a5 5a 07 f8 00 ff 00 ff ff 00 ff 00 ff 00 ff 00
 # F105 protect   1ffff800: 00 ff 07 f8 ff 00 ff 00 00 ff 00 ff 00 ff 00 ff
 # F105 clobber   1ffff800: 00 00 00 00 00 03 00 03 00 ff 00 ff 00 ff 00 ff
+
+# Select specific programmer ("make stinfo" to get serial)
+# export ST_ARGS="--serial 57FF6E064975545225502187"		# amiga1
+# export ST_ARGS="--serial 53FF74064986525547421187"		# amiga2
+# export ST_ARGS="--serial 303030303030303030303031"		# amiga1
+
 just-unprotect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --reset write flash_unprotect.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_unprotect.bin 0x1ffff800
 just-protect: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --reset write flash_protect.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_protect.bin 0x1ffff800
 just-clobber: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-flash --reset write flash_clobber.bin 0x1ffff800
+	$(ST_TOOLS_PATH)/st-flash $(ST_ARGS) --reset write flash_clobber.bin 0x1ffff800
 
 dfu: all just-dfu
 flash: all just-flash
 
 # Connect to remote STM32 via ST-Link (follow with "make gdb")
-stlink: | $(UDEV_FILE_PATHS)
-	$(ST_TOOLS_PATH)/st-util --no-reset
+stlink: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-util $(ST_ARGS) --no-reset
+
+stinfo reset: $(ST_TOOLS_PATH)/st-flash | $(UDEV_FILE_PATHS)
+	$(ST_TOOLS_PATH)/st-info --probe
 
 # Get ST-TOOLS
 $(ST_BUILD_DIR) get-stutils:

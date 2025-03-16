@@ -58,7 +58,7 @@
  * STM32F1 does not have a 32-bit counter on any timer, but two timers can
  * be chained to form a 32-bit counter. Because of this capability, we can
  * still implement a 64-bit clock tick value, but the code is a bit more
- * complicated. For that reason, the the low level routines must be slightly
+ * complicated. For that reason, the low level routines must be slightly
  * different.
  */
 
@@ -97,6 +97,12 @@ tim2_isr(void)
 uint64_t
 timer_tick_get(void)
 {
+    /*
+     * TIM3       is high speed tick 72 MHz RCC_PLK2
+     * TIM2       is cascaded tick, 72 MHz / 65536 = ~1098.6 Hz
+     * timer_high is cascaded globak, 72 MHz / 2^32 = ~0.0168 Hz
+     */
+
     uint32_t high   = timer_high;
     uint32_t high16 = TIM_CNT(TIM2);
     uint32_t low16  = TIM_CNT(TIM3);
@@ -216,10 +222,11 @@ timer_tick_get(void)
     return (((uint64_t) high << 32) | low);
 }
 
+/* STM32F407 */
 void
 timer_init(void)
 {
-    /* Enable and reset TIM2 */
+    /* Enable and reset 32-bit TIM2 */
     RCC_APB1ENR  |=  RCC_APB1ENR_TIM2EN;
     RCC_APB1RSTR |=  RCC_APB1RSTR_TIM2RST;
     RCC_APB1RSTR &= ~RCC_APB1RSTR_TIM2RST;
@@ -238,6 +245,7 @@ timer_init(void)
     nvic_enable_irq(NVIC_TIM2_IRQ);
 }
 
+/* STM32F407 */
 void
 timer_delay_ticks(uint32_t ticks)
 {
@@ -396,4 +404,11 @@ timer_delay_usec(uint usec)
     while (timer_tick_has_elapsed(end) == false) {
         /* Empty */
     }
+}
+
+#include <time.h>
+time_t
+time(time_t *ptr)
+{
+    return (timer_tick_get());
 }

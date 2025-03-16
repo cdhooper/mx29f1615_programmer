@@ -62,7 +62,8 @@ static const cmd_t cmd_list[] = {
                         "[bwlqohRS] <addr> [<len>]", "display memory" },
     { cmd_echo,    "echo",    0, NULL, " <text>", "display text" },
 #ifdef EMBEDDED_CMD
-    { cmd_gpio,    "gpio",    1, cmd_gpio_help, " show", "show GPIOs" },
+    { cmd_gpio,    "gpio",    1, cmd_gpio_help,
+                        " [p<a-f><0-15>[=<x>]", "show or set GPIOs" },
 #endif
     { cmd_ignore,  "ignore",  0, NULL, " <cmd>", "ignore result of command" },
     { cmd_help,    "help",    0, NULL, " [<cmd>]", "display help" },
@@ -81,8 +82,10 @@ static const cmd_t cmd_list[] = {
     { cmd_test,    "test",    2, cmd_test_help,
                         "[bwlqoh] <addr> <len> <testtype>", "test memory" },
 #ifdef EMBEDDED_CMD
+#ifdef HAVE_SPACE_PROM
     { cmd_prom,    "prom",    1, cmd_prom_help, " [erase|id|read|write|...]",
                         "perform EEPROM operation" },
+#endif
     { cmd_reset,   "reset",   0, cmd_reset_help, " [dfu]", "reset CPU" },
     { cmd_time,    "time",    0, cmd_time_help, " cmd|now|watch>",
                         "measure or show time" },
@@ -95,17 +98,48 @@ static const cmd_t cmd_list[] = {
     { cmd_version, "version", 1, NULL, "", "show version" },
 };
 
+static const char *do_not_eval_cmds[] = {
+#ifdef EMBEDDED_CMD
+    "pld",
+#endif
+};
+
+static uint
+check_for_do_not_eval(const char *str)
+{
+    const char *first = str;
+    const char *last = str;
+    uint  len;
+    uint  cur;
+    while ((*first == ' ') || (*first == '\t'))
+        first++;
+    for (last = first; *last != ' '; last++) {
+        if ((*last < 'A') || (*last > 'z') ||
+            ((*last > 'Z') && (*last < 'a'))) {
+            break;  // Not A-Z or a-z
+        }
+    }
+    len = last - first;
+    for (cur = 0; cur < ARRAY_SIZE(do_not_eval_cmds); cur++)
+        if (strncmp(first, do_not_eval_cmds[cur], len) == 0)
+            return (1);
+    return (0);
+}
+
 static rc_t
 cmd_help(int argc, char * const *argv)
 {
-    int    cur;
+    size_t cur;
     rc_t   rc = RC_SUCCESS;
     int    arg;
 
     if (argc <= 1) {
         for (cur = 0; cur < ARRAY_SIZE(cmd_list); cur++) {
-            int len = strlen(cmd_list[cur].cl_name) +
-                      strlen(cmd_list[cur].cl_help_args);
+            int len;
+            if (cmd_list[cur].cl_help_desc == NULL)
+                continue;  // hidden command
+            len = strlen(cmd_list[cur].cl_name) +
+                  strlen(cmd_list[cur].cl_help_args);
             printf("%s%s", cmd_list[cur].cl_name, cmd_list[cur].cl_help_args);
             if (len < 38)
                 printf("%*s", 38 - len, "");
@@ -122,6 +156,8 @@ cmd_help(int argc, char * const *argv)
 
             if ((strcmp(argv[arg], cl_name) == 0) ||
                 ((cl_len != 0) && (strncmp(argv[arg], cl_name, cl_len) == 0))) {
+                if (cmd_list[cur].cl_help_desc == NULL)
+                    continue;  // hidden command
                 printf("%s%s - %s\n", cl_name,
                        cmd_list[cur].cl_help_args, cmd_list[cur].cl_help_desc);
                 if (cmd_list[cur].cl_help_long != NULL)
@@ -319,7 +355,7 @@ scan_int(const char *str, int *intval)
 static rc_t
 cmd_exec_argv_single(int argc, char * const *argv)
 {
-    int cur;
+    size_t cur;
     int rc = RC_SUCCESS;
 #ifdef DEBUG_ARGLIST
     printf("exec_argv\n");
@@ -335,7 +371,7 @@ cmd_exec_argv_single(int argc, char * const *argv)
             if (rc == RC_USER_HELP) {
                 if (cmd_list[cur].cl_help_long != NULL)
                     printf("%s\n", cmd_list[cur].cl_help_long);
-                else
+                else if (cmd_list[cur].cl_help_desc != NULL)
                     printf("%s%s - %s\n", cl_name, cmd_list[cur].cl_help_args,
                            cmd_list[cur].cl_help_desc);
             }
@@ -812,6 +848,10 @@ eval_cmdline_expr(const char *str)
 
     if (buf == NULL)
         errx(EXIT_FAILURE, "Unable to allocate memory");
+
+    /* Some commands should not have arguments evaluated / expanded */
+    if (check_for_do_not_eval(str))
+        return (buf);
 
     /* Repeatedly scan string, evaluating expressions within parens first */
 eval_again:

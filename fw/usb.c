@@ -884,7 +884,7 @@ void usb_startup(void)
     usb_strings[2] = (char *)usb_serial_str;
 
 #ifdef STM32F4
-    /* GPIO9 should left as an INPUT */
+    /* GPIO9 should be left as an INPUT */
     gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO11 | GPIO12);
     gpio_set_af(GPIOA, GPIO_AF10, GPIO11 | GPIO12);
 

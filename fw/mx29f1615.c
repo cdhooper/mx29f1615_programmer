@@ -518,6 +518,13 @@ mx_wait_for_done_status(uint32_t timeout_usec, int verbose, int mode)
             }
             break;  // done
         }
+        if (timeout_usec > 5000) {
+            usb_poll();
+            if (input_break_pending()) {
+                printf("^C\n");
+                return (1);
+            }
+        }
     }
     if (status & (MX_STATUS_FAIL_PROGRAM | MX_STATUS_FAIL_ERASE)) {
         printf("    %s failed %02x\n",
@@ -803,12 +810,40 @@ mx_id(void)
     uint16_t low;
     uint16_t high;
 
-    mx_cmd(0x05555, 0x0090, 0);
+    mx_cmd(0x05555, 0x0090, 1);
     mx_read_word(0x00000, &low);
     mx_read_word(0x00001, &high);
 
     mx_read_mode();
     return (low | (high << 16));
+}
+
+typedef struct {
+    uint32_t ci_id;       // Vendor code
+    char     ci_dev[16];  // ID string for display
+} chip_ids_t;
+
+static const chip_ids_t chip_ids[] = {
+    { 0x006b00c2, "MX29F1615" },   // AMD+others 2MB top boot
+    { 0x00000000, "Unknown" },     // Must remain last
+};
+
+const char *
+mx_id_string(uint32_t id)
+{
+    uint pos;
+
+    for (pos = 0; pos < ARRAY_SIZE(chip_ids) - 1; pos++)
+        if (chip_ids[pos].ci_id == id)
+            break;
+
+    if (pos == ARRAY_SIZE(chip_ids)) {
+        uint16_t cid = id & 0xffff;
+        for (pos = 0; pos < ARRAY_SIZE(chip_ids) - 1; pos++)
+            if ((chip_ids[pos].ci_id & 0xffff) == cid)
+                break;
+    }
+    return (chip_ids[pos].ci_dev);
 }
 
 /*
