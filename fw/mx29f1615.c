@@ -518,8 +518,8 @@ mx_wait_for_done_status(uint32_t timeout_usec, int verbose, int mode)
             }
             break;  // done
         }
-        if (timeout_usec > 5000) {
-            usb_poll();
+        usb_poll();
+        if (usecs > 1000000) {
             if (input_break_pending()) {
                 printf("^C\n");
                 return (1);
