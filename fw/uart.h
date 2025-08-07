@@ -67,6 +67,7 @@ int input_break_pending(void);
 
 int uart_putchar(int ch);
 void uart_flush(void);
+void uart_replay_output(void);     // re-show all previous uart output
 int puts_binary(void *buf, uint32_t len);
 
 #define SOURCE_UART 0  // Last input source was serial UART
