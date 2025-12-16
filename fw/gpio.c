@@ -376,7 +376,7 @@ static const gpio_names_t gpio_names[] = {
     { "EN_VCC",    GPIO_B, 12 },
     { "EN_VPP",    GPIO_B, 13 },
     { "SenseV3P3", GPIO_A, 1 },
-    { "SenseV10FB", GPIO_A, 2 },
+    { "SensV10FB", GPIO_A, 2 },
     { "SenseV10",  GPIO_A, 3 },
     { "SenseV5",   GPIO_C, 4 },
     { "SenseV5CL", GPIO_C, 5 },

@@ -53,7 +53,7 @@
 #define KEY_CTRL_K           0x0b  /* ^K Erase to end of line */
 #define KEY_CTRL_L           0x0c  /* ^L Redraw line */
 #define KEY_CTRL_M           0x0d  /* ^M Carriage Return */
-#define KEY_CTRL_N           0x0e  /* ^N - Cursor down */
+#define KEY_CTRL_N           0x0e  /* ^N Cursor down */
 #define KEY_CTRL_P           0x10  /* ^P Cursor up */
 #define KEY_CTRL_R           0x12  /* ^R Redraw line */
 #define KEY_CTRL_U           0x15  /* ^U Erase to start of line */
@@ -64,20 +64,21 @@
 #define KEY_ESC              0x1b  /* Escape key */
 #define KEY_SPACE            0x20  /* Space key */
 #define KEY_BACKSPACE2       0x7f  /* ^? Backspace on some keyboards */
+#define KEY_DELETE           0x7f  /* ^? Backspace on some keyboards */
 #define KEY_AMIGA_ESC        0x9b  /* Amiga key sequence */
 
 #define KEY_LINE_BEGIN       KEY_CTRL_A
-#define KEY_LEFT             KEY_CTRL_B
+#define KEY_CURSOR_LEFT      KEY_CTRL_B
 #define KEY_DEL_CHAR         KEY_CTRL_D
 #define KEY_LINE_END         KEY_CTRL_E
-#define KEY_RIGHT            KEY_CTRL_F
+#define KEY_CURSOR_RIGHT     KEY_CTRL_F
 #define KEY_BACKSPACE        KEY_CTRL_H
 #define KEY_TAB              KEY_CTRL_I
 #define KEY_NL               KEY_CTRL_J
 #define KEY_CLEAR_TO_END     KEY_CTRL_K
 #define KEY_REDRAW1          KEY_CTRL_L
 #define KEY_CR               KEY_CTRL_M
-#define KEY_DOWN             KEY_CTRL_N
+#define KEY_CURSOR_DOWN      KEY_CTRL_N
 #define KEY_CURSOR_UP        KEY_CTRL_P
 #define KEY_REDRAW2          KEY_CTRL_R
 #define KEY_CLEAR_TO_START   KEY_CTRL_U
@@ -283,6 +284,7 @@ get_new_input_line(const char *prompt, char **line)
     int  ch;
 
     *line = NULL;
+    input_line_prompt = prompt;
 
     if (input_need_prompt) {
         input_need_prompt = 0;
@@ -317,13 +319,13 @@ get_new_input_line(const char *prompt, char **line)
                     ch = KEY_CURSOR_UP;
                     break;
                 case 'B':
-                    ch = KEY_DOWN;
+                    ch = KEY_CURSOR_DOWN;
                     break;
                 case 'C':
-                    ch = KEY_RIGHT;
+                    ch = KEY_CURSOR_RIGHT;
                     break;
                 case 'D':
-                    ch = KEY_LEFT;
+                    ch = KEY_CURSOR_LEFT;
                     break;
                 case 'F':
                     ch = KEY_LINE_END;
@@ -463,6 +465,7 @@ redraw_prompt:
             putchar(KEY_SPACE);
             putchars(KEY_BACKSPACE, strlen(input_buf + input_pos) + 1);
             break;
+//      case KEY_DELETE:
         case KEY_DEL_CHAR:
             if (input_buf[input_pos] == '\0')
                 break;  /* Nothing more to delete at end of line */
@@ -482,14 +485,14 @@ redraw_prompt:
             putstr(input_buf + input_pos);
             input_pos += strlen(input_buf + input_pos);
             break;
-        case KEY_LEFT:
+        case KEY_CURSOR_LEFT:
             /* Move the cursor one position to the left (^B) */
             if (input_pos == 0)
                 break;
             input_pos--;
             putchar(KEY_BACKSPACE);
             break;
-        case KEY_RIGHT:
+        case KEY_CURSOR_RIGHT:
             /* Move the cursor one position to the right (^F) */
             if (input_pos >= sizeof (input_buf) - 1)
                 break;
@@ -505,12 +508,10 @@ redraw_prompt:
             /* ESC initiates an Escape sequence */
             input_mode = INPUT_MODE_ESC;
             break;
-#ifdef AMIGA
-        case KEY_AMIGA_ESC:
+        case KEY_AMIGA_ESC:  // Control Sequence Initiator (CSI)
             /* Amiga ESC initiates an Escape [ sequence */
             input_mode = INPUT_MODE_BRACKET;
             break;
-#endif
         case KEY_CLEAR_TO_START:
             /* Delete all text to the left of the cursor */
             putchars(KEY_BACKSPACE, input_pos);
@@ -569,7 +570,7 @@ redraw_prompt:
                 break;
             }
             goto update_input_line;
-        case KEY_DOWN:
+        case KEY_CURSOR_DOWN:
             /* History next */
             len = strlen(input_buf);
             if (history_add(input_buf, history_cur_line) == TRUE)
@@ -625,6 +626,7 @@ literal_input:
             putstr(input_buf + input_pos);
             putchars(KEY_BACKSPACE, len - 1);
             input_pos++;
+            break;
     }
     return (RC_SUCCESS);
 }
@@ -646,12 +648,13 @@ history_get(int line_num)
     return (&cur);
 }
 
+#if 0
 HISTORY_STATE *
 history_get_history_state(void)
 {
     HISTORY_STATE *state = malloc(sizeof (*state));
     if (state == NULL)
-        errx(EXIT_FAILURE, "no memory");
+        err(EXIT_FAILURE, "no memory");
 
     state->history_cur       = history_cur;
     state->history_cur_line  = history_cur_line;
@@ -666,6 +669,7 @@ history_set_history_state(const HISTORY_STATE *state)
     history_cur_line = state->history_cur_line;
     memcpy(history_buf, state->history_buf, sizeof (history_buf));
 }
+#endif
 
 int
 history_expand(const char *line, char **expansion)
@@ -692,13 +696,14 @@ rl_initialize(void)
 {
     static bool_t did_rl_init = FALSE;
 
+    input_need_prompt = 1;
+    input_clear();
+
     if (did_rl_init == TRUE)
         return (0);
 
     did_rl_init       = TRUE;
-    input_need_prompt = 1;
     history_cur       = history_buf;
-    input_clear();
 
 #ifndef EMBEDDED_CMD
 #ifdef AMIGA
@@ -742,12 +747,11 @@ readline(const char *prompt)
 
     (void) rl_initialize();
 
-    input_line_prompt = prompt;
     input_clear();
 
     /* Acquire input command by processing keystrokes */
     do {
-        rc_t rc = get_new_input_line(input_line_prompt, &cmd);
+        rc_t rc = get_new_input_line(prompt, &cmd);
         if (rc == RC_USR_ABORT)
             return (NULL);
         if (rc == RC_NO_DATA)
