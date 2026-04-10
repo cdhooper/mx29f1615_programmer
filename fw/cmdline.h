@@ -36,6 +36,7 @@ typedef enum {
     RC_NO_DATA   = 5,  /* No data pending */
     RC_BAD_PARAM = 6,  /* Invalid parameter */
     RC_TIMEOUT   = 7,  /* Operation timed out */
+    RC_PROTECT   = 8,  /* Protected */
 } rc_t;
 
 int cmdline(void);

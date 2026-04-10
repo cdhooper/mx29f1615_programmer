@@ -51,10 +51,6 @@
 #define SRAM_BASE 0x20000000U
 #endif
 
-#if defined(STM32F4)
-#define FLASH_BASE FLASH_MEM_INTERFACE_BASE
-#endif
-
 #endif /* libopencm3 */
 
 const char cmd_cpu_help[] =

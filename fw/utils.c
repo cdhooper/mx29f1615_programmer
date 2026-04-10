@@ -44,9 +44,6 @@ void SystemInit_post(void);
 #define APB2_FREQ clock_get_apb2()
 #define DBGMCU_DEVID (DBGMCU_IDCODE & DBGMCU_IDCODE_DEV_ID_MASK)
 #define DBGMCU_REVID ((DBGMCU_IDCODE & DBGMCU_IDCODE_REV_ID_MASK) >> 16)
-#if defined(STM32F4)
-#define FLASH_BASE 0x08000000U
-#endif
 
 static void SystemInit_post(void) { }
 #endif

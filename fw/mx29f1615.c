@@ -207,7 +207,7 @@ oe_output(uint value)
 static void
 ce_output_enable(void)
 {
-    gpio_setmode(CE_GPIO_Port, CE_Pin, GPIO_SETMODE_OUTPUT_PPULL_2);
+    gpio_setmode(CE_GPIO_Port, CE_Pin, GPIO_SETMODE_OUTPUT_2);
 }
 
 static void
@@ -220,7 +220,7 @@ ce_output_disable(void)
 static void
 oe_output_enable(void)
 {
-    gpio_setmode(OE_GPIO_Port, OE_Pin, GPIO_SETMODE_OUTPUT_PPULL_50);
+    gpio_setmode(OE_GPIO_Port, OE_Pin, GPIO_SETMODE_OUTPUT_50);
 }
 
 static void
@@ -238,7 +238,7 @@ vcc_enable(void)
 #endif
     /* Drive EN_VCC low to turn on VCC */
     gpio_setv(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, 0);
-    gpio_setmode(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_SETMODE_OUTPUT_PPULL_2);
+    gpio_setmode(EE_EN_VCC_GPIO_Port, EE_EN_VCC_Pin, GPIO_SETMODE_OUTPUT_2);
 }
 
 static void

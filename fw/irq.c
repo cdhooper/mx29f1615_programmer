@@ -443,9 +443,13 @@ void i2c2_ev_isr(void) __attribute__((alias("unknown_handler")));
 void i2c2_er_isr(void) __attribute__((alias("unknown_handler")));
 void spi1_isr(void) __attribute__((alias("unknown_handler")));
 void spi2_isr(void) __attribute__((alias("unknown_handler")));
-// void usart1_isr(void) __attribute__((alias("unknown_handler")));
+#ifndef STM32F1
+void usart1_isr(void) __attribute__((alias("unknown_handler")));
+#endif
 void usart2_isr(void) __attribute__((alias("unknown_handler")));
+#ifndef STM32F4
 void usart3_isr(void) __attribute__((alias("unknown_handler")));
+#endif
 void exti15_10_isr(void) __attribute__((alias("unknown_handler")));
 void rtc_alarm_isr(void) __attribute__((alias("unknown_handler")));
 void usb_wakeup_isr(void) __attribute__((alias("unknown_handler")));

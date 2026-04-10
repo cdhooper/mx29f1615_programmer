@@ -18,6 +18,9 @@ int stm32flash_read(uint32_t addr, uint len, void *buf);
 
 #define STM32FLASH_FLAG_AUTOERASE 1
 
+#ifdef STM32F4
+#define STM32FLASH_FLAG_AUTOERASE 1
+#define STM32FLASH_SIZE (512 << 10)  // 512 KB
+#endif
+
 #endif /* _STM32FLASH_H */
-
-

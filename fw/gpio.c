@@ -128,9 +128,7 @@ gpio_setv(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, int value)
 static uint
 gpio_getv(uint32_t GPIOx, uint pin)
 {
-#ifdef STM32F1
     return (GPIO_ODR(GPIOx) & BIT(pin));
-#endif
 }
 
 #ifdef USE_HAL_DRIVER
@@ -259,7 +257,7 @@ gpio_setmode(GPIO_TypeDefP GPIOx, uint16_t GPIO_Pins, uint value)
 static uint
 gpio_getmode(uint32_t GPIOx, uint pin)
 {
-#ifdef STM32F1
+#if defined(STM32F1)
     if (pin < 8) {
         uint shift = pin * 4;
         return ((GPIO_CRL(GPIOx) >> shift) & 0xf);
@@ -267,6 +265,19 @@ gpio_getmode(uint32_t GPIOx, uint pin)
         uint shift = (pin - 8) * 4;
         return ((GPIO_CRH(GPIOx) >> shift) & 0xf);
     }
+#elif defined(STM32F4)
+    uint mode = (((GPIO_MODER(GPIOx) >> (pin * 2)) & 3) << 5) |
+                (((GPIO_OTYPER(GPIOx) >> pin) & 1) << 4) |
+                (((GPIO_PUPDR(GPIOx) >> (pin * 2)) & 3) << 2) |
+                ((GPIO_OSPEEDR(GPIOx) >> (pin * 2)) & 3);
+
+    if ((mode & 0x60) == (GPIO_SETMODE_ALTFUNC_2 & 0x60)) {
+        if (pin < 8)
+            mode |= (((GPIO_AFRL(GPIOx) >> (pin * 4)) & 0xf) << 8);
+        else
+            mode |= (((GPIO_AFRH(GPIOx) >> ((pin - 8) * 4)) & 0xf) << 8);
+    }
+    return (mode);
 #endif
 }
 
@@ -319,6 +330,15 @@ static const char * const gpio_mode_long[] = {
         "AO2 AltFunc Output 2MHz", "AO5 AltFunc Output 50MHz",
     "Rsv", "AD1 AltFunc Open Drain 10MHz",
         "AD2 AltFunc Open Drain 2MHz", "AD5 AltFunc Open Drain 50MHz",
+};
+#endif
+#ifdef STM32F4
+static const char * const gpio_mode_short[] = {
+    "I",
+};
+
+static const char * const gpio_mode_long[] = {
+    "Input",
 };
 #endif
 
@@ -465,6 +485,9 @@ gpio_show(int whichport, int pins)
     int pin;
     uint mode;
     uint print_all = (whichport < 0) && (pins == 0xffff);
+#ifdef STM32F4
+    uint array_mode;
+#endif
 
     if (print_all) {
         printf("EEPROM A0-A15=PE0-PE5 A16-A19=PC6-PC9\n"
@@ -501,7 +524,6 @@ gpio_show(int whichport, int pins)
                 if (mode == GPIO_SETMODE_INPUT_PULLUPDOWN)
                     mode_txt = gpio_getv(gpio, pin) ? "Input PU" : "Input PD";
             }
-#endif
             /* Pull-up or pull down depending on output register state */
             if (print_all) {
                 printf("%4s", mode_txt);
@@ -523,6 +545,71 @@ gpio_show(int whichport, int pins)
                     printf(" %s", name);
                 printf("\n");
             }
+#endif
+#ifdef STM32F4
+            array_mode = (mode >> 2) & (ARRAY_SIZE(gpio_mode_short) - 1);
+            if (print_all) {
+                mode_txt = gpio_mode_short[array_mode];
+            } else {
+                mode_txt = gpio_mode_long[array_mode];
+            }
+            /* Pull-up or pull down depending on output register state */
+            if (print_all) {
+                if (((mode & 0x60) == (GPIO_SETMODE_OUTPUT_2 & 0x60)) &&
+                    ((mode & 3) != 0) &&
+                    (strlen(mode_txt) < 3)) {
+                    /* Output or AltFunc and > 2 MHz -- Show speed */
+                    printf("%3s%c", mode_txt,
+                           ((mode & 3) == 1) ? '2' :
+                           ((mode & 3) == 2) ? '5' : '1');  // 2 25 50 100
+                } else if ((mode & 0x60) == (GPIO_SETMODE_ALTFUNC_2 & 0x60)) {
+                    printf(" AF%x", (mode >> 8) & 0xf);
+                } else {
+                    printf("%4s", mode_txt);
+                }
+            } else {
+                const char *name;
+                char *mode_speed = "";
+                char mode_altfunc[8];
+                char mode_extra[8];
+                uint pinstate = !!(gpio_get(gpio, BIT(pin)));
+                if (((mode & 0x60) == (GPIO_SETMODE_OUTPUT_2 & 0x60)) ||
+                    ((mode & 0x60) == (GPIO_SETMODE_ALTFUNC_2 & 0x60))) {
+                    /* Output or AltFunc -- show speed */
+                    switch (mode & 0x3) {
+                        case GPIO_SETMODE_OUTPUT_2 & 3:
+                            mode_speed = "2MHz ";
+                            break;
+                        case GPIO_SETMODE_OUTPUT_25 & 3:
+                            mode_speed = "25MHz ";
+                            break;
+                        case GPIO_SETMODE_OUTPUT_50 & 3:
+                            mode_speed = "50MHz ";
+                            break;
+                        case GPIO_SETMODE_OUTPUT_100 & 3:
+                            mode_speed = "100MHz ";
+                            break;
+                    }
+                }
+                mode_altfunc[0] = '\0';
+                if ((mode & 0x60) == (GPIO_SETMODE_ALTFUNC_2 & 0x60)) {
+                    sprintf(mode_altfunc, " AF%u", (mode >> 8) & 0xf);
+                }
+                mode_extra[0] = '\0';
+                if ((mode & 0x60) == (GPIO_SETMODE_OUTPUT_2 & 0x60)) {
+                    /* Output -- check for inconsistency */
+                    uint outval = !!gpio_getv(gpio, pin);
+                    if (outval != pinstate)
+                        sprintf(mode_extra, "=%u>", outval);
+                }
+                printf("P%c%d=%s%s %s(%s%d)", 'A' + port, pin, mode_txt,
+                       mode_altfunc, mode_speed, mode_extra, pinstate);
+                name = gpio_to_name(port, pin);
+                if (name != NULL)
+                    printf(" %s", name);
+                printf("\n");
+            }
+#endif
         }
         if (print_all)
             printf("\n");
@@ -584,7 +671,7 @@ gpio_assign(int whichport, int pins, const char *assign)
         case 'a':
         case 'A':
             if (assign[1] == '\0') {
-                gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_ANALOG);
+                gpio_setmode(gpio, pins, GPIO_SETMODE_ANALOG);
                 return;
             }
             break;
@@ -598,7 +685,7 @@ gpio_assign(int whichport, int pins, const char *assign)
         case 'o':
         case 'O':
             if (assign[1] == '\0') {
-                gpio_setmode(gpio, pins, GPIO_SETMODE_OUTPUT_PPULL_2);
+                gpio_setmode(gpio, pins, GPIO_SETMODE_OUTPUT_2);
                 return;
             }
             break;
@@ -613,8 +700,7 @@ change_to_output:
                     mode = gpio_getmode(gpio, pin);
                     if ((mode & 3) == 0) {
                         /* Currently an input mode -- default to 2MHz Output */
-                        gpio_setmode(gpio, BIT(pin),
-                                     GPIO_SETMODE_OUTPUT_PPULL_2);
+                        gpio_setmode(gpio, BIT(pin), GPIO_SETMODE_OUTPUT_2);
                     }
                 }
                 return;
@@ -632,13 +718,21 @@ change_to_output:
                 switch (assign[1]) {
                     case 'u':
                     case 'U':
+#ifdef STM32F1
                         gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PULLUPDOWN);
                         gpio_setv(gpio, pins, 1);
+#else // STM32F4
+                        gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PU);
+#endif
                         return;
                     case 'd':
                     case 'D':
+#ifdef STM32F1
                         gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PULLUPDOWN);
                         gpio_setv(gpio, pins, 0);
+#else // STM32F4
+                        gpio_setmode(gpio, pins, GPIO_SETMODE_INPUT_PD);
+#endif
                         return;
                     default:
                         break;
